@@ -22,6 +22,7 @@ export default function TaskBoard() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [newTaskDay, setNewTaskDay] = useState<DayOfWeek | null>(null)
   const [newTaskTitle, setNewTaskTitle] = useState('')
+  const [expandedDay, setExpandedDay] = useState<DayOfWeek | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -36,17 +37,15 @@ export default function TaskBoard() {
     load()
   }, [load])
 
-  async function addTask(day: DayOfWeek) {
-    if (!newTaskTitle.trim()) return
+  async function addTask(day: DayOfWeek, title: string) {
+    if (!title.trim()) return
     const dayTasks = tasks.filter((t) => t.dia_semana === day)
     const maxPos = dayTasks.length ? Math.max(...dayTasks.map((t) => t.posicion)) : 0
     await supabase.from('tasks').insert({
       dia_semana: day,
-      titulo: newTaskTitle.trim(),
+      titulo: title.trim(),
       posicion: maxPos + 1,
     })
-    setNewTaskTitle('')
-    setNewTaskDay(null)
     load()
   }
 
@@ -63,6 +62,11 @@ export default function TaskBoard() {
 
   async function assignTask(taskId: string, userId: string | null) {
     await supabase.from('tasks').update({ asignado_a: userId }).eq('id', taskId)
+    load()
+  }
+
+  async function moveTaskToDay(taskId: string, newDay: DayOfWeek) {
+    await supabase.from('tasks').update({ dia_semana: newDay }).eq('id', taskId)
     load()
   }
 
@@ -91,6 +95,7 @@ export default function TaskBoard() {
   }
 
   const activeTask = tasks.find((t) => t.id === activeId)
+  const expandedDayLabel = DAYS.find((d) => d.key === expandedDay)?.label
 
   if (loading) return <p className="text-ink-soft">Cargando...</p>
 
@@ -109,6 +114,7 @@ export default function TaskBoard() {
               onToggle={toggleComplete}
               onAssign={assignTask}
               onDelete={deleteTask}
+              onExpand={() => setExpandedDay(day.key)}
               addingHere={newTaskDay === day.key}
               onStartAdd={() => setNewTaskDay(day.key)}
               onCancelAdd={() => {
@@ -117,7 +123,11 @@ export default function TaskBoard() {
               }}
               newTaskTitle={newTaskTitle}
               setNewTaskTitle={setNewTaskTitle}
-              onSubmitAdd={() => addTask(day.key)}
+              onSubmitAdd={() => {
+                addTask(day.key, newTaskTitle)
+                setNewTaskTitle('')
+                setNewTaskDay(null)
+              }}
             />
           ))}
         </div>
@@ -129,6 +139,21 @@ export default function TaskBoard() {
           )}
         </DragOverlay>
       </DndContext>
+
+      {expandedDay && (
+        <DayFullScreen
+          day={expandedDay}
+          label={expandedDayLabel ?? ''}
+          tasks={tasks.filter((t) => t.dia_semana === expandedDay)}
+          profiles={profiles}
+          onToggle={toggleComplete}
+          onAssign={assignTask}
+          onDelete={deleteTask}
+          onMoveDay={moveTaskToDay}
+          onAddTask={(title) => addTask(expandedDay, title)}
+          onClose={() => setExpandedDay(null)}
+        />
+      )}
     </div>
   )
 }
@@ -141,6 +166,7 @@ function DayColumn({
   onToggle,
   onAssign,
   onDelete,
+  onExpand,
   addingHere,
   onStartAdd,
   onCancelAdd,
@@ -155,6 +181,7 @@ function DayColumn({
   onToggle: (task: TaskCard) => void
   onAssign: (taskId: string, userId: string | null) => void
   onDelete: (taskId: string) => void
+  onExpand: () => void
   addingHere: boolean
   onStartAdd: () => void
   onCancelAdd: () => void
@@ -163,6 +190,8 @@ function DayColumn({
   onSubmitAdd: () => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: day })
+  const visibleTasks = tasks.slice(0, 4)
+  const hiddenCount = tasks.length - visibleTasks.length
 
   return (
     <div
@@ -171,9 +200,22 @@ function DayColumn({
         isOver ? 'ring-2 ring-terracotta' : ''
       }`}
     >
-      <h2 className="font-semibold text-ink px-2 py-1">{label}</h2>
+      <div className="flex items-center justify-between px-2 py-1">
+        <h2 className="font-semibold text-ink">
+          {label}
+          {tasks.length > 0 && <span className="text-ink-soft font-normal ml-1">({tasks.length})</span>}
+        </h2>
+        <button
+          onClick={onExpand}
+          className="text-ink-soft hover:text-terracotta text-lg leading-none px-1"
+          aria-label={`Ver ${label} en pantalla completa`}
+          title="Ver en pantalla completa"
+        >
+          ⤢
+        </button>
+      </div>
       <div className="flex-1 space-y-2 mt-1">
-        {tasks.map((task) => (
+        {visibleTasks.map((task) => (
           <TaskCardItem
             key={task.id}
             task={task}
@@ -183,6 +225,14 @@ function DayColumn({
             onDelete={onDelete}
           />
         ))}
+        {hiddenCount > 0 && (
+          <button
+            onClick={onExpand}
+            className="w-full text-center py-2 text-sm font-medium text-terracotta hover:text-terracotta-dark"
+          >
+            + {hiddenCount} tarea{hiddenCount !== 1 && 's'} más
+          </button>
+        )}
       </div>
       {addingHere ? (
         <div className="mt-2 space-y-2">
@@ -296,6 +346,149 @@ function TaskCardItem({
               Borrar
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Vista de un día en pantalla completa: se usa cuando la columna compacta
+// del tablero semanal se queda corta de espacio para muchas tareas.
+function DayFullScreen({
+  day,
+  label,
+  tasks,
+  profiles,
+  onToggle,
+  onAssign,
+  onDelete,
+  onMoveDay,
+  onAddTask,
+  onClose,
+}: {
+  day: DayOfWeek
+  label: string
+  tasks: TaskCard[]
+  profiles: { id: string; nombre: string }[]
+  onToggle: (task: TaskCard) => void
+  onAssign: (taskId: string, userId: string | null) => void
+  onDelete: (taskId: string) => void
+  onMoveDay: (taskId: string, newDay: DayOfWeek) => void
+  onAddTask: (title: string) => void
+  onClose: () => void
+}) {
+  const [title, setTitle] = useState('')
+
+  function submit() {
+    if (!title.trim()) return
+    onAddTask(title)
+    setTitle('')
+  }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 bg-cream z-50 flex flex-col">
+      <div className="border-b border-line bg-paper px-4 sm:px-8 py-4 flex items-center justify-between shrink-0">
+        <h2 className="text-2xl sm:text-3xl font-semibold text-ink">{label}</h2>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 rounded-xl text-ink-soft hover:text-ink hover:bg-cream text-lg font-medium"
+        >
+          Cerrar ✕
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+        <div className="max-w-3xl mx-auto space-y-3">
+          {tasks.length === 0 && (
+            <p className="text-ink-soft text-center py-12">Sin tareas para este día todavía.</p>
+          )}
+          {tasks.map((task) => {
+            const assignedName = profiles.find((p) => p.id === task.asignado_a)?.nombre
+            return (
+              <div
+                key={task.id}
+                className="bg-paper border border-line rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+              >
+                <p
+                  className={`flex-1 text-lg font-medium break-words ${
+                    task.completada ? 'line-through text-ink-soft' : 'text-ink'
+                  }`}
+                >
+                  {task.titulo}
+                </p>
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                  <select
+                    value={task.asignado_a ?? ''}
+                    onChange={(e) => onAssign(task.id, e.target.value || null)}
+                    className="text-sm border border-line rounded-lg px-3 py-2 text-ink-soft bg-transparent"
+                  >
+                    <option value="">Sin asignar</option>
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {assignedName && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-sage/20 text-sage-dark">
+                      {assignedName}
+                    </span>
+                  )}
+                  <select
+                    value={day}
+                    onChange={(e) => onMoveDay(task.id, e.target.value as DayOfWeek)}
+                    className="text-sm border border-line rounded-lg px-3 py-2 text-ink-soft bg-transparent"
+                    aria-label="Mover a otro día"
+                  >
+                    {DAYS.map((d) => (
+                      <option key={d.key} value={d.key}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => onToggle(task)}
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-terracotta hover:bg-terracotta/10"
+                  >
+                    {task.completada ? 'Reabrir' : 'Completar'}
+                  </button>
+                  <button
+                    onClick={() => onDelete(task.id)}
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-rose hover:bg-rose/10"
+                  >
+                    Borrar
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="border-t border-line bg-paper px-4 sm:px-8 py-4 shrink-0">
+        <div className="max-w-3xl mx-auto flex gap-3">
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            placeholder="Nueva tarea para este día..."
+            className="flex-1 px-4 py-3 rounded-xl border border-line text-lg"
+          />
+          <button
+            onClick={submit}
+            className="px-6 py-3 rounded-xl bg-terracotta text-white font-medium text-lg hover:bg-terracotta-dark"
+          >
+            Agregar
+          </button>
         </div>
       </div>
     </div>
