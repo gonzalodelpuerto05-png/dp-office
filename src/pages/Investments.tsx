@@ -7,6 +7,7 @@ import Modal from '../components/Modal'
 import type { Currency, Investment } from '../types'
 import { CURRENCIES, BASE_CURRENCY } from '../types'
 import { formatMoney, gainLoss, gainLossPercent, formatPercent } from '../lib/format'
+import { logActivity } from '../lib/activity'
 
 export default function Investments() {
   const { categories, investments, loading, reload } = useCategoriesWithInvestments()
@@ -18,9 +19,9 @@ export default function Investments() {
 
   async function createCategory() {
     if (!newCategoryName.trim()) return
-    await supabase
-      .from('categories')
-      .insert({ nombre: newCategoryName.trim(), creado_por: profile?.id })
+    const nombre = newCategoryName.trim()
+    await supabase.from('categories').insert({ nombre, creado_por: profile?.id })
+    logActivity(profile, 'creó', 'categoría', nombre)
     setNewCategoryName('')
     setShowNewCategory(false)
     reload()
@@ -28,17 +29,17 @@ export default function Investments() {
 
   async function updateCategory() {
     if (!editingCategory || !editingCategory.nombre.trim()) return
-    await supabase
-      .from('categories')
-      .update({ nombre: editingCategory.nombre.trim() })
-      .eq('id', editingCategory.id)
+    const nombre = editingCategory.nombre.trim()
+    await supabase.from('categories').update({ nombre }).eq('id', editingCategory.id)
+    logActivity(profile, 'editó', 'categoría', nombre)
     setEditingCategory(null)
     reload()
   }
 
-  async function deleteCategory(id: string) {
+  async function deleteCategory(id: string, nombre: string) {
     if (!confirm('¿Eliminar esta categoría? También se eliminarán sus inversiones.')) return
     await supabase.from('categories').delete().eq('id', id)
+    logActivity(profile, 'eliminó', 'categoría', nombre)
     reload()
   }
 
@@ -88,7 +89,7 @@ export default function Investments() {
                   Editar
                 </button>
                 <button
-                  onClick={() => deleteCategory(cat.id)}
+                  onClick={() => deleteCategory(cat.id, cat.nombre)}
                   className="px-4 py-2 rounded-lg border border-line text-sm font-medium text-rose hover:bg-rose/10"
                 >
                   Eliminar
@@ -203,6 +204,7 @@ function NewInvestmentModal({
   onClose: () => void
   onCreated: () => void
 }) {
+  const { profile } = useAuth()
   const [nombre, setNombre] = useState('')
   const [moneda, setMoneda] = useState<Currency>(BASE_CURRENCY)
   const [cotizacion, setCotizacion] = useState('1')
@@ -224,6 +226,7 @@ function NewInvestmentModal({
       valor_actual: valor,
     }
     await supabase.from('investments').insert(payload)
+    logActivity(profile, 'creó', 'inversión', nombre.trim())
     setSaving(false)
     onCreated()
     onClose()

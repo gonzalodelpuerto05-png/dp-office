@@ -12,6 +12,8 @@ import {
 import { useDraggable } from '@dnd-kit/core'
 import { supabase } from '../lib/supabase'
 import { useProfiles } from '../hooks/useProfiles'
+import { useAuth } from '../context/AuthContext'
+import { logActivity } from '../lib/activity'
 import { DAYS } from '../types'
 import type { DayOfWeek, TaskCard } from '../types'
 
@@ -19,6 +21,7 @@ export default function TaskBoard() {
   const [tasks, setTasks] = useState<TaskCard[]>([])
   const [loading, setLoading] = useState(true)
   const { profiles } = useProfiles()
+  const { profile } = useAuth()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [newTaskDay, setNewTaskDay] = useState<DayOfWeek | null>(null)
   const [newTaskTitle, setNewTaskTitle] = useState('')
@@ -46,17 +49,20 @@ export default function TaskBoard() {
       titulo: title.trim(),
       posicion: maxPos + 1,
     })
+    logActivity(profile, 'creó', 'tarea', title.trim())
     load()
   }
 
   async function toggleComplete(task: TaskCard) {
+    const completando = !task.completada
     await supabase
       .from('tasks')
       .update({
-        completada: !task.completada,
-        fecha_completada: !task.completada ? new Date().toISOString() : null,
+        completada: completando,
+        fecha_completada: completando ? new Date().toISOString() : null,
       })
       .eq('id', task.id)
+    if (completando) logActivity(profile, 'completó', 'tarea', task.titulo)
     load()
   }
 
@@ -72,7 +78,9 @@ export default function TaskBoard() {
 
   async function deleteTask(taskId: string) {
     if (!confirm('¿Eliminar esta tarea?')) return
+    const task = tasks.find((t) => t.id === taskId)
     await supabase.from('tasks').delete().eq('id', taskId)
+    if (task) logActivity(profile, 'eliminó', 'tarea', task.titulo)
     load()
   }
 

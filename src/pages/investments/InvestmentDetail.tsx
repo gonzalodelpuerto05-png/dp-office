@@ -2,15 +2,19 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useProfiles } from '../../hooks/useProfiles'
+import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/Modal'
 import type { Investment, InvestmentIncome, InvestmentCost, Currency, IncomeStatus } from '../../types'
 import { BASE_CURRENCY, CURRENCIES } from '../../types'
 import { formatMoney, formatDate, gainLoss, gainLossPercent, formatPercent } from '../../lib/format'
+import { logActivity } from '../../lib/activity'
+import InvestmentFiles from '../../components/InvestmentFiles'
 
 export default function InvestmentDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { profiles } = useProfiles()
+  const { profile } = useAuth()
 
   const [investment, setInvestment] = useState<Investment | null>(null)
   const [income, setIncome] = useState<InvestmentIncome[]>([])
@@ -54,8 +58,16 @@ export default function InvestmentDetail() {
   }, [load])
 
   async function saveValorActual() {
-    if (!id) return
-    await supabase.from('investments').update({ valor_actual: parseFloat(valorActual) || 0 }).eq('id', id)
+    if (!id || !investment) return
+    const nuevo = parseFloat(valorActual) || 0
+    await supabase.from('investments').update({ valor_actual: nuevo }).eq('id', id)
+    logActivity(
+      profile,
+      'actualizó el valor actual de',
+      'inversión',
+      investment.nombre,
+      `${formatMoney(investment.valor_actual, investment.moneda)} → ${formatMoney(nuevo, investment.moneda)}`
+    )
     setEditingValue(false)
     load()
   }
@@ -82,20 +94,25 @@ export default function InvestmentDetail() {
   }
 
   async function deleteIncome(incomeId: string) {
-    if (!confirm('¿Eliminar este ingreso?')) return
+    if (!investment || !confirm('¿Eliminar este ingreso?')) return
+    const item = income.find((i) => i.id === incomeId)
     await supabase.from('investment_income').delete().eq('id', incomeId)
+    logActivity(profile, 'eliminó un ingreso de', 'inversión', investment.nombre, item?.concepto)
     load()
   }
 
   async function deleteCost(costId: string) {
-    if (!confirm('¿Eliminar este costo?')) return
+    if (!investment || !confirm('¿Eliminar este costo?')) return
+    const item = costs.find((c) => c.id === costId)
     await supabase.from('investment_costs').delete().eq('id', costId)
+    logActivity(profile, 'eliminó un costo de', 'inversión', investment.nombre, item?.concepto)
     load()
   }
 
   async function deleteInvestment() {
-    if (!id || !confirm('¿Eliminar esta inversión? No se puede deshacer.')) return
+    if (!id || !investment || !confirm('¿Eliminar esta inversión? No se puede deshacer.')) return
     await supabase.from('investments').delete().eq('id', id)
+    logActivity(profile, 'eliminó', 'inversión', investment.nombre)
     navigate('/inversiones')
   }
 
@@ -281,6 +298,11 @@ export default function InvestmentDetail() {
         </section>
       </div>
 
+      <section className="bg-paper border border-line rounded-2xl p-6">
+        <h2 className="text-lg font-semibold text-ink mb-4">Documentos</h2>
+        <InvestmentFiles investmentId={id!} investmentNombre={investment.nombre} />
+      </section>
+
       {showEditModal && (
         <EditInvestmentModal
           investment={investment}
@@ -291,6 +313,7 @@ export default function InvestmentDetail() {
       {showIncomeModal && (
         <IncomeModal
           investmentId={id!}
+          investmentNombre={investment.nombre}
           onClose={() => setShowIncomeModal(false)}
           onSaved={load}
         />
@@ -298,17 +321,24 @@ export default function InvestmentDetail() {
       {editingIncome && (
         <IncomeModal
           investmentId={id!}
+          investmentNombre={investment.nombre}
           existing={editingIncome}
           onClose={() => setEditingIncome(null)}
           onSaved={load}
         />
       )}
       {showCostModal && (
-        <CostModal investmentId={id!} onClose={() => setShowCostModal(false)} onSaved={load} />
+        <CostModal
+          investmentId={id!}
+          investmentNombre={investment.nombre}
+          onClose={() => setShowCostModal(false)}
+          onSaved={load}
+        />
       )}
       {editingCost && (
         <CostModal
           investmentId={id!}
+          investmentNombre={investment.nombre}
           existing={editingCost}
           onClose={() => setEditingCost(null)}
           onSaved={load}
@@ -327,6 +357,7 @@ function EditInvestmentModal({
   onClose: () => void
   onSaved: () => void
 }) {
+  const { profile } = useAuth()
   const [nombre, setNombre] = useState(investment.nombre)
   const [moneda, setMoneda] = useState<Currency>(investment.moneda)
   const [cotizacion, setCotizacion] = useState(String(investment.cotizacion))
@@ -347,6 +378,7 @@ function EditInvestmentModal({
         fecha_compra: fechaCompra,
       })
       .eq('id', investment.id)
+    logActivity(profile, 'editó los datos de compra de', 'inversión', nombre.trim())
     setSaving(false)
     onSaved()
     onClose()
@@ -498,15 +530,18 @@ function IncomeCostTable({
 
 function IncomeModal({
   investmentId,
+  investmentNombre,
   existing,
   onClose,
   onSaved,
 }: {
   investmentId: string
+  investmentNombre: string
   existing?: InvestmentIncome
   onClose: () => void
   onSaved: () => void
 }) {
+  const { profile } = useAuth()
   const [fecha, setFecha] = useState(existing?.fecha ?? new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState(String(existing?.monto ?? ''))
   const [concepto, setConcepto] = useState(existing?.concepto ?? '')
@@ -517,8 +552,10 @@ function IncomeModal({
     const payload = { investment_id: investmentId, fecha, monto: parseFloat(monto), concepto: concepto.trim(), estado }
     if (existing) {
       await supabase.from('investment_income').update(payload).eq('id', existing.id)
+      logActivity(profile, 'editó un ingreso de', 'inversión', investmentNombre, concepto.trim())
     } else {
       await supabase.from('investment_income').insert(payload)
+      logActivity(profile, 'agregó un ingreso a', 'inversión', investmentNombre, concepto.trim())
     }
     onSaved()
     onClose()
@@ -582,15 +619,18 @@ function IncomeModal({
 
 function CostModal({
   investmentId,
+  investmentNombre,
   existing,
   onClose,
   onSaved,
 }: {
   investmentId: string
+  investmentNombre: string
   existing?: InvestmentCost
   onClose: () => void
   onSaved: () => void
 }) {
+  const { profile } = useAuth()
   const [fecha, setFecha] = useState(existing?.fecha ?? new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState(String(existing?.monto ?? ''))
   const [concepto, setConcepto] = useState(existing?.concepto ?? '')
@@ -600,8 +640,10 @@ function CostModal({
     const payload = { investment_id: investmentId, fecha, monto: parseFloat(monto), concepto: concepto.trim() }
     if (existing) {
       await supabase.from('investment_costs').update(payload).eq('id', existing.id)
+      logActivity(profile, 'editó un costo de', 'inversión', investmentNombre, concepto.trim())
     } else {
       await supabase.from('investment_costs').insert(payload)
+      logActivity(profile, 'agregó un costo a', 'inversión', investmentNombre, concepto.trim())
     }
     onSaved()
     onClose()

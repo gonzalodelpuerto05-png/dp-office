@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useProfiles } from '../hooks/useProfiles'
 import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
+import { logActivity } from '../lib/activity'
 
 export default function Settings() {
   const { profile } = useAuth()
@@ -16,6 +17,7 @@ export default function Settings() {
       return
     }
     if (!confirm('¿Eliminar este usuario? Perderá acceso a la app.')) return
+    const target = profiles.find((p) => p.id === userId)
     const { error } = await supabase.functions.invoke('admin-delete-user', {
       body: { user_id: userId },
     })
@@ -23,6 +25,7 @@ export default function Settings() {
       setError('No se pudo eliminar el usuario.')
       return
     }
+    if (target) logActivity(profile, 'eliminó', 'usuario', target.nombre)
     reload()
   }
 
@@ -78,6 +81,7 @@ export default function Settings() {
           onClose={() => setShowNew(false)}
           onCreated={reload}
           onError={setError}
+          creatorProfile={profile}
         />
       )}
     </div>
@@ -88,10 +92,12 @@ function NewUserModal({
   onClose,
   onCreated,
   onError,
+  creatorProfile,
 }: {
   onClose: () => void
   onCreated: () => void
   onError: (msg: string) => void
+  creatorProfile: ReturnType<typeof useAuth>['profile']
 }) {
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
@@ -109,6 +115,7 @@ function NewUserModal({
       onError('No se pudo crear el usuario. ¿El email ya existe?')
       return
     }
+    logActivity(creatorProfile, 'creó', 'usuario', nombre.trim())
     onCreated()
     onClose()
   }

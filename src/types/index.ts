@@ -55,6 +55,24 @@ export interface InvestmentResponsible {
   user_id: string
 }
 
+export interface ActivityLogEntry {
+  id: string
+  user_id: string | null
+  user_nombre: string
+  accion: string
+  entidad: string
+  entidad_nombre: string
+  detalle: string | null
+  created_at: string
+}
+
+export interface InvestmentFile {
+  name: string
+  path: string
+  size: number
+  created_at: string
+}
+
 export type DayOfWeek =
   | 'lunes'
   | 'martes'

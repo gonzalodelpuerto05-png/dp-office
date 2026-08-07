@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import ExcelJS from 'exceljs'
 import { supabase } from '../lib/supabase'
 import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useProfiles } from '../hooks/useProfiles'
@@ -25,6 +26,24 @@ function rangoPorPeriodo(periodo: Periodo, desde: string, hasta: string) {
   return { desde: inicio.toISOString().slice(0, 10), hasta: fin }
 }
 
+async function fetchPeriodData(d: string, h: string) {
+  const [{ data: incomeData }, { data: costsData }, { data: tasksData }] = await Promise.all([
+    supabase.from('investment_income').select('*').gte('fecha', d).lte('fecha', h),
+    supabase.from('investment_costs').select('*').gte('fecha', d).lte('fecha', h),
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('completada', true)
+      .gte('fecha_completada', d)
+      .lte('fecha_completada', h + 'T23:59:59'),
+  ])
+  return {
+    income: (incomeData as InvestmentIncome[]) ?? [],
+    costs: (costsData as InvestmentCost[]) ?? [],
+    tasks: (tasksData as TaskCard[]) ?? [],
+  }
+}
+
 export default function Reports() {
   const { categories, investments } = useCategoriesWithInvestments()
   const { profiles } = useProfiles()
@@ -32,27 +51,14 @@ export default function Reports() {
   const [desde, setDesde] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().slice(0, 10))
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [generating, setGenerating] = useState(false)
+  const [generatingExcel, setGeneratingExcel] = useState(false)
   const { currency, setCurrency, rate, setRate, convert } = useDisplayCurrency()
 
   async function generar() {
     setGenerating(true)
     try {
       const { desde: d, hasta: h } = rangoPorPeriodo(periodo, desde, hasta)
-
-      const [{ data: incomeData }, { data: costsData }, { data: tasksData }] = await Promise.all([
-        supabase.from('investment_income').select('*').gte('fecha', d).lte('fecha', h),
-        supabase.from('investment_costs').select('*').gte('fecha', d).lte('fecha', h),
-        supabase
-          .from('tasks')
-          .select('*')
-          .eq('completada', true)
-          .gte('fecha_completada', d)
-          .lte('fecha_completada', h + 'T23:59:59'),
-      ])
-
-      const income = (incomeData as InvestmentIncome[]) ?? []
-      const costs = (costsData as InvestmentCost[]) ?? []
-      const tasks = (tasksData as TaskCard[]) ?? []
+      const { income, costs, tasks } = await fetchPeriodData(d, h)
 
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
@@ -198,6 +204,143 @@ export default function Reports() {
     }
   }
 
+  async function generarExcel() {
+    setGeneratingExcel(true)
+    try {
+      const { desde: d, hasta: h } = rangoPorPeriodo(periodo, desde, hasta)
+      const { income, costs, tasks } = await fetchPeriodData(d, h)
+
+      const patrimonioTotal = convert(investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0))
+      const gananciaTotal = convert(investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0))
+
+      const wb = new ExcelJS.Workbook()
+      wb.creator = 'DP Office'
+      wb.created = new Date()
+
+      const headerStyle = { font: { bold: true } }
+
+      const resumen = wb.addWorksheet('Resumen')
+      resumen.columns = [{ width: 28 }, { width: 20 }]
+      resumen.addRow(['Período', `${d} a ${h}`])
+      resumen.addRow(['Moneda', currency])
+      if (currency !== BASE_CURRENCY) resumen.addRow([`1 ${BASE_CURRENCY} =`, rate])
+      resumen.addRow([`Patrimonio total (${currency})`, patrimonioTotal])
+      resumen.addRow([`Ganancia / Pérdida total (${currency})`, gananciaTotal])
+
+      const porCategoria = wb.addWorksheet('Por categoría')
+      porCategoria.columns = [
+        { header: 'Categoría', key: 'categoria', width: 24 },
+        { header: `Valor (${currency})`, key: 'valor', width: 18 },
+        { header: '% del total', key: 'pct', width: 14 },
+      ]
+      porCategoria.getRow(1).font = headerStyle.font
+      categories.forEach((cat) => {
+        const catInv = investments.filter((i) => i.category_id === cat.id)
+        const value = convert(catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0))
+        if (value === 0) return
+        porCategoria.addRow({
+          categoria: cat.nombre,
+          valor: Number(value.toFixed(2)),
+          pct: patrimonioTotal ? Number(((value / patrimonioTotal) * 100).toFixed(1)) : 0,
+        })
+      })
+
+      const invSheet = wb.addWorksheet('Inversiones')
+      invSheet.columns = [
+        { header: 'Inversión', key: 'nombre', width: 28 },
+        { header: 'Categoría', key: 'categoria', width: 20 },
+        { header: 'Moneda', key: 'moneda', width: 10 },
+        { header: 'Valor de compra', key: 'compra', width: 16 },
+        { header: 'Valor actual', key: 'actual', width: 16 },
+        { header: 'Ganancia/Pérdida', key: 'gl', width: 16 },
+        { header: 'Rentabilidad %', key: 'rent', width: 14 },
+      ]
+      invSheet.getRow(1).font = headerStyle.font
+      investments.forEach((inv) => {
+        const catName = categories.find((c) => c.id === inv.category_id)?.nombre ?? '-'
+        invSheet.addRow({
+          nombre: inv.nombre,
+          categoria: catName,
+          moneda: inv.moneda,
+          compra: inv.valor_compra,
+          actual: inv.valor_actual,
+          gl: Number(gainLoss(inv).toFixed(2)),
+          rent: Number(gainLossPercent(inv).toFixed(1)),
+        })
+      })
+
+      const incomeSheet = wb.addWorksheet('Ingresos')
+      incomeSheet.columns = [
+        { header: 'Fecha', key: 'fecha', width: 14 },
+        { header: 'Inversión', key: 'inversion', width: 24 },
+        { header: 'Concepto', key: 'concepto', width: 24 },
+        { header: 'Moneda', key: 'moneda', width: 10 },
+        { header: 'Monto', key: 'monto', width: 14 },
+        { header: 'Estado', key: 'estado', width: 14 },
+      ]
+      incomeSheet.getRow(1).font = headerStyle.font
+      income.forEach((i) => {
+        const inv = investments.find((v) => v.id === i.investment_id)
+        incomeSheet.addRow({
+          fecha: i.fecha,
+          inversion: inv?.nombre ?? '-',
+          concepto: i.concepto,
+          moneda: inv?.moneda ?? BASE_CURRENCY,
+          monto: i.monto,
+          estado: i.estado,
+        })
+      })
+
+      const costsSheet = wb.addWorksheet('Costos')
+      costsSheet.columns = [
+        { header: 'Fecha', key: 'fecha', width: 14 },
+        { header: 'Inversión', key: 'inversion', width: 24 },
+        { header: 'Concepto', key: 'concepto', width: 24 },
+        { header: 'Moneda', key: 'moneda', width: 10 },
+        { header: 'Monto', key: 'monto', width: 14 },
+      ]
+      costsSheet.getRow(1).font = headerStyle.font
+      costs.forEach((c) => {
+        const inv = investments.find((v) => v.id === c.investment_id)
+        costsSheet.addRow({
+          fecha: c.fecha,
+          inversion: inv?.nombre ?? '-',
+          concepto: c.concepto,
+          moneda: inv?.moneda ?? BASE_CURRENCY,
+          monto: c.monto,
+        })
+      })
+
+      const tasksSheet = wb.addWorksheet('Tareas completadas')
+      tasksSheet.columns = [
+        { header: 'Responsable', key: 'responsable', width: 20 },
+        { header: 'Tarea', key: 'tarea', width: 30 },
+        { header: 'Fecha completada', key: 'fecha', width: 18 },
+      ]
+      tasksSheet.getRow(1).font = headerStyle.font
+      tasks.forEach((t) => {
+        tasksSheet.addRow({
+          responsable: profiles.find((p) => p.id === t.asignado_a)?.nombre ?? 'Sin asignar',
+          tarea: t.titulo,
+          fecha: t.fecha_completada ? t.fecha_completada.slice(0, 10) : '-',
+        })
+      })
+
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `dp-office-informe-${d}-a-${h}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setGeneratingExcel(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-xl">
       <h1 className="text-3xl font-semibold text-ink">Reportes</h1>
@@ -246,13 +389,22 @@ export default function Reports() {
           </div>
         )}
 
-        <button
-          onClick={generar}
-          disabled={generating}
-          className="w-full py-3 rounded-xl bg-terracotta text-white font-medium text-lg hover:bg-terracotta-dark disabled:opacity-60"
-        >
-          {generating ? 'Generando...' : 'Generar y descargar PDF'}
-        </button>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <button
+            onClick={generar}
+            disabled={generating}
+            className="w-full py-3 rounded-xl bg-terracotta text-white font-medium text-lg hover:bg-terracotta-dark disabled:opacity-60"
+          >
+            {generating ? 'Generando...' : 'Descargar PDF'}
+          </button>
+          <button
+            onClick={generarExcel}
+            disabled={generatingExcel}
+            className="w-full py-3 rounded-xl border border-line text-ink font-medium text-lg hover:bg-cream disabled:opacity-60"
+          >
+            {generatingExcel ? 'Generando...' : 'Descargar Excel'}
+          </button>
+        </div>
       </section>
     </div>
   )

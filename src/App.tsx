@@ -9,6 +9,7 @@ import InvestmentDetail from './pages/investments/InvestmentDetail'
 import TaskBoard from './pages/TaskBoard'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
+import Activity from './pages/Activity'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/inversiones/:id" element={<InvestmentDetail />} />
             <Route path="/tablero" element={<TaskBoard />} />
             <Route path="/reportes" element={<Reports />} />
+            <Route path="/actividad" element={<Activity />} />
             <Route path="/configuracion" element={<Settings />} />
           </Route>
         </Routes>
