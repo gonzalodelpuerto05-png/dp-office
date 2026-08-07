@@ -143,7 +143,7 @@ export default function Reports() {
         head: [['Fecha', 'Inversión', 'Concepto', 'Monto', 'Estado']],
         body: income.map((i) => {
           const inv = investments.find((v) => v.id === i.investment_id)
-          return [formatDate(i.fecha), inv?.nombre ?? '-', i.concepto, formatMoney(i.monto, inv?.moneda ?? BASE_CURRENCY), i.estado]
+          return [formatDate(i.fecha), inv?.nombre ?? '-', i.concepto, formatMoney(i.monto, i.moneda), i.estado]
         }),
         theme: 'striped',
         headStyles: { fillColor: [111, 143, 106] },
@@ -162,7 +162,7 @@ export default function Reports() {
         head: [['Fecha', 'Inversión', 'Concepto', 'Monto']],
         body: costs.map((c) => {
           const inv = investments.find((v) => v.id === c.investment_id)
-          return [formatDate(c.fecha), inv?.nombre ?? '-', c.concepto, formatMoney(c.monto, inv?.moneda ?? BASE_CURRENCY)]
+          return [formatDate(c.fecha), inv?.nombre ?? '-', c.concepto, formatMoney(c.monto, c.moneda)]
         }),
         theme: 'striped',
         headStyles: { fillColor: [180, 73, 79] },
@@ -285,7 +285,7 @@ export default function Reports() {
           fecha: i.fecha,
           inversion: inv?.nombre ?? '-',
           concepto: i.concepto,
-          moneda: inv?.moneda ?? BASE_CURRENCY,
+          moneda: i.moneda,
           monto: i.monto,
           estado: i.estado,
         })
@@ -306,7 +306,7 @@ export default function Reports() {
           fecha: c.fecha,
           inversion: inv?.nombre ?? '-',
           concepto: c.concepto,
-          moneda: inv?.moneda ?? BASE_CURRENCY,
+          moneda: c.moneda,
           monto: c.monto,
         })
       })

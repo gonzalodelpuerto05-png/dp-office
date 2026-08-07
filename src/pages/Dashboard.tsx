@@ -15,6 +15,15 @@ export default function Dashboard() {
   const { categories, investments, loading } = useCategoriesWithInvestments()
   const [upcomingIncome, setUpcomingIncome] = useState<(InvestmentIncome & { investment_nombre: string })[]>([])
   const { currency, setCurrency, rate, setRate, convert } = useDisplayCurrency()
+  const [chartExpanded, setChartExpanded] = useState(false)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setChartExpanded(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   useEffect(() => {
     async function loadUpcoming() {
@@ -82,7 +91,18 @@ export default function Dashboard() {
 
       <div className="grid lg:grid-cols-2 gap-6">
         <section className="bg-paper border border-line rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-ink mb-4">Desglose por categoría</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-ink">Desglose por categoría</h2>
+            {porCategoria.length > 0 && (
+              <button
+                onClick={() => setChartExpanded(true)}
+                title="Ver en pantalla completa"
+                className="text-ink-soft hover:text-terracotta text-lg leading-none px-1"
+              >
+                ⤢
+              </button>
+            )}
+          </div>
           {porCategoria.length === 0 ? (
             <p className="text-ink-soft text-sm">Cargá inversiones para ver el desglose.</p>
           ) : (
@@ -176,6 +196,41 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      {chartExpanded && (
+        <div className="fixed inset-0 bg-cream z-50 flex flex-col">
+          <div className="border-b border-line bg-paper px-4 sm:px-8 py-4 flex items-center justify-between shrink-0">
+            <h2 className="text-2xl sm:text-3xl font-semibold text-ink">Desglose por categoría</h2>
+            <button
+              onClick={() => setChartExpanded(false)}
+              className="px-4 py-2 rounded-xl text-ink-soft hover:text-ink hover:bg-cream text-lg font-medium"
+            >
+              Cerrar ✕
+            </button>
+          </div>
+          <div className="flex-1 p-4 sm:p-8">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={porCategoria}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius="70%"
+                  label={(entry) => `${entry.name} (${((entry.value / patrimonioTotal) * 100).toFixed(0)}%)`}
+                >
+                  {porCategoria.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => formatMoney(Number(value), currency)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

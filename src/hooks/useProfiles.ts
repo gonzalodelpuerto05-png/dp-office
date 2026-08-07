@@ -7,14 +7,12 @@ export function useProfiles() {
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
-    setLoading(true)
     const { data } = await supabase.from('profiles').select('*').order('nombre')
     setProfiles((data as Profile[]) ?? [])
-    setLoading(false)
   }, [])
 
   useEffect(() => {
-    reload()
+    reload().finally(() => setLoading(false))
   }, [reload])
 
   return { profiles, loading, reload }

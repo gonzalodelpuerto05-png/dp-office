@@ -36,6 +36,7 @@ export interface InvestmentIncome {
   investment_id: string
   fecha: string
   monto: number
+  moneda: Currency
   concepto: string
   estado: IncomeStatus
   created_at: string
@@ -46,6 +47,7 @@ export interface InvestmentCost {
   investment_id: string
   fecha: string
   monto: number
+  moneda: Currency
   concepto: string
   created_at: string
 }

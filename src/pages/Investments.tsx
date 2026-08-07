@@ -16,6 +16,7 @@ export default function Investments() {
   const [newCategoryName, setNewCategoryName] = useState('')
   const [investmentModalFor, setInvestmentModalFor] = useState<string | null>(null)
   const [editingCategory, setEditingCategory] = useState<{ id: string; nombre: string } | null>(null)
+  const [filter, setFilter] = useState('')
 
   async function createCategory() {
     if (!newCategoryName.trim()) return
@@ -45,9 +46,21 @@ export default function Investments() {
 
   if (loading) return <p className="text-ink-soft">Cargando...</p>
 
+  const q = filter.trim().toLowerCase()
+  const visibleCategories = categories
+    .map((cat) => {
+      const catInvestments = investments.filter((i) => i.category_id === cat.id)
+      if (!q) return { cat, catInvestments }
+      const categoryMatches = cat.nombre.toLowerCase().includes(q)
+      const matchingInvestments = catInvestments.filter((i) => i.nombre.toLowerCase().includes(q))
+      if (!categoryMatches && matchingInvestments.length === 0) return null
+      return { cat, catInvestments: categoryMatches ? catInvestments : matchingInvestments }
+    })
+    .filter((x): x is { cat: (typeof categories)[number]; catInvestments: Investment[] } => x !== null)
+
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-3xl font-semibold text-ink">Inversiones</h1>
         <button
           onClick={() => setShowNewCategory(true)}
@@ -57,14 +70,26 @@ export default function Investments() {
         </button>
       </div>
 
+      {categories.length > 0 && (
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filtrar por categoría o inversión..."
+          className="w-full max-w-md px-4 py-2.5 rounded-xl border border-line text-base"
+        />
+      )}
+
       {categories.length === 0 && (
         <p className="text-ink-soft">
           Todavía no hay categorías. Creá la primera para empezar a cargar inversiones.
         </p>
       )}
 
-      {categories.map((cat) => {
-        const catInvestments = investments.filter((i) => i.category_id === cat.id)
+      {categories.length > 0 && visibleCategories.length === 0 && (
+        <p className="text-ink-soft">Sin resultados para "{filter}".</p>
+      )}
+
+      {visibleCategories.map(({ cat, catInvestments }) => {
         const total = catInvestments.reduce((sum, i) => sum + i.valor_actual, 0)
         return (
           <section key={cat.id} className="bg-paper border border-line rounded-2xl p-6">

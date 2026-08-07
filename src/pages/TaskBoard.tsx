@@ -29,15 +29,15 @@ export default function TaskBoard() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
+  // No toca "loading": se llama después de cada acción (agregar, mover,
+  // completar, borrar) para no colapsar el tablero y perder el scroll.
   const load = useCallback(async () => {
-    setLoading(true)
     const { data } = await supabase.from('tasks').select('*').order('posicion')
     setTasks((data as TaskCard[]) ?? [])
-    setLoading(false)
   }, [])
 
   useEffect(() => {
-    load()
+    load().finally(() => setLoading(false))
   }, [load])
 
   async function addTask(day: DayOfWeek, title: string) {

@@ -33,9 +33,11 @@ export default function InvestmentDetail() {
   const [editingIncome, setEditingIncome] = useState<InvestmentIncome | null>(null)
   const [editingCost, setEditingCost] = useState<InvestmentCost | null>(null)
 
+  // No toca "loading": se usa para refrescar después de guardar cualquier
+  // cambio (ingreso, costo, valor actual, etc). Si tocara loading, cada
+  // guardado colapsaría la página a "Cargando..." y se perdía el scroll.
   const load = useCallback(async () => {
     if (!id) return
-    setLoading(true)
     const [{ data: inv }, { data: inc }, { data: cst }, { data: resp }] = await Promise.all([
       supabase.from('investments').select('*').eq('id', id).single(),
       supabase.from('investment_income').select('*').eq('investment_id', id).order('fecha'),
@@ -50,11 +52,11 @@ export default function InvestmentDetail() {
       setValorActual(String((inv as Investment).valor_actual))
       setNotas((inv as Investment).notas ?? '')
     }
-    setLoading(false)
   }, [id])
 
   useEffect(() => {
-    load()
+    setLoading(true)
+    load().finally(() => setLoading(false))
   }, [load])
 
   async function saveValorActual() {
@@ -227,10 +229,10 @@ export default function InvestmentDetail() {
               id: i.id,
               fecha: i.fecha,
               monto: i.monto,
+              moneda: i.moneda,
               concepto: i.concepto,
               estado: i.estado,
             }))}
-            currency={investment.moneda}
             onEdit={(row) => setEditingIncome(income.find((i) => i.id === row.id) ?? null)}
             onDelete={deleteIncome}
           />
@@ -251,8 +253,13 @@ export default function InvestmentDetail() {
           <p className="text-ink-soft text-sm">Sin costos cargados.</p>
         ) : (
           <IncomeCostTable
-            rows={costs.map((c) => ({ id: c.id, fecha: c.fecha, monto: c.monto, concepto: c.concepto }))}
-            currency={investment.moneda}
+            rows={costs.map((c) => ({
+              id: c.id,
+              fecha: c.fecha,
+              monto: c.monto,
+              moneda: c.moneda,
+              concepto: c.concepto,
+            }))}
             onEdit={(row) => setEditingCost(costs.find((c) => c.id === row.id) ?? null)}
             onDelete={deleteCost}
           />
@@ -314,6 +321,7 @@ export default function InvestmentDetail() {
         <IncomeModal
           investmentId={id!}
           investmentNombre={investment.nombre}
+          investmentMoneda={investment.moneda}
           onClose={() => setShowIncomeModal(false)}
           onSaved={load}
         />
@@ -322,6 +330,7 @@ export default function InvestmentDetail() {
         <IncomeModal
           investmentId={id!}
           investmentNombre={investment.nombre}
+          investmentMoneda={investment.moneda}
           existing={editingIncome}
           onClose={() => setEditingIncome(null)}
           onSaved={load}
@@ -331,6 +340,7 @@ export default function InvestmentDetail() {
         <CostModal
           investmentId={id!}
           investmentNombre={investment.nombre}
+          investmentMoneda={investment.moneda}
           onClose={() => setShowCostModal(false)}
           onSaved={load}
         />
@@ -339,6 +349,7 @@ export default function InvestmentDetail() {
         <CostModal
           investmentId={id!}
           investmentNombre={investment.nombre}
+          investmentMoneda={investment.moneda}
           existing={editingCost}
           onClose={() => setEditingCost(null)}
           onSaved={load}
@@ -468,12 +479,10 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function IncomeCostTable({
   rows,
-  currency,
   onEdit,
   onDelete,
 }: {
-  rows: { id: string; fecha: string; monto: number; concepto: string; estado?: IncomeStatus }[]
-  currency: Currency
+  rows: { id: string; fecha: string; monto: number; moneda: Currency; concepto: string; estado?: IncomeStatus }[]
   onEdit: (row: { id: string }) => void
   onDelete: (id: string) => void
 }) {
@@ -494,7 +503,7 @@ function IncomeCostTable({
             <tr key={row.id} className="border-b border-line last:border-0">
               <td className="py-3 pr-4">{formatDate(row.fecha)}</td>
               <td className="py-3 pr-4">{row.concepto}</td>
-              <td className="py-3 pr-4">{formatMoney(row.monto, currency)}</td>
+              <td className="py-3 pr-4">{formatMoney(row.monto, row.moneda)}</td>
               {row.estado !== undefined && (
                 <td className="py-3 pr-4">
                   <span
@@ -531,12 +540,14 @@ function IncomeCostTable({
 function IncomeModal({
   investmentId,
   investmentNombre,
+  investmentMoneda,
   existing,
   onClose,
   onSaved,
 }: {
   investmentId: string
   investmentNombre: string
+  investmentMoneda: Currency
   existing?: InvestmentIncome
   onClose: () => void
   onSaved: () => void
@@ -544,12 +555,20 @@ function IncomeModal({
   const { profile } = useAuth()
   const [fecha, setFecha] = useState(existing?.fecha ?? new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState(String(existing?.monto ?? ''))
+  const [moneda, setMoneda] = useState<Currency>(existing?.moneda ?? investmentMoneda)
   const [concepto, setConcepto] = useState(existing?.concepto ?? '')
   const [estado, setEstado] = useState<IncomeStatus>(existing?.estado ?? 'programado')
 
   async function save() {
     if (!monto || !concepto.trim()) return
-    const payload = { investment_id: investmentId, fecha, monto: parseFloat(monto), concepto: concepto.trim(), estado }
+    const payload = {
+      investment_id: investmentId,
+      fecha,
+      monto: parseFloat(monto),
+      moneda,
+      concepto: concepto.trim(),
+      estado,
+    }
     if (existing) {
       await supabase.from('investment_income').update(payload).eq('id', existing.id)
       logActivity(profile, 'editó un ingreso de', 'inversión', investmentNombre, concepto.trim())
@@ -595,16 +614,32 @@ function IncomeModal({
             />
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Estado</label>
-          <select
-            value={estado}
-            onChange={(e) => setEstado(e.target.value as IncomeStatus)}
-            className="w-full px-4 py-3 rounded-xl border border-line text-lg"
-          >
-            <option value="programado">Programado</option>
-            <option value="cobrado">Cobrado</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Moneda</label>
+            <select
+              value={moneda}
+              onChange={(e) => setMoneda(e.target.value as Currency)}
+              className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c === 'OTHER' ? 'Otra' : c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Estado</label>
+            <select
+              value={estado}
+              onChange={(e) => setEstado(e.target.value as IncomeStatus)}
+              className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+            >
+              <option value="programado">Programado</option>
+              <option value="cobrado">Cobrado</option>
+            </select>
+          </div>
         </div>
         <button
           onClick={save}
@@ -620,12 +655,14 @@ function IncomeModal({
 function CostModal({
   investmentId,
   investmentNombre,
+  investmentMoneda,
   existing,
   onClose,
   onSaved,
 }: {
   investmentId: string
   investmentNombre: string
+  investmentMoneda: Currency
   existing?: InvestmentCost
   onClose: () => void
   onSaved: () => void
@@ -633,11 +670,12 @@ function CostModal({
   const { profile } = useAuth()
   const [fecha, setFecha] = useState(existing?.fecha ?? new Date().toISOString().slice(0, 10))
   const [monto, setMonto] = useState(String(existing?.monto ?? ''))
+  const [moneda, setMoneda] = useState<Currency>(existing?.moneda ?? investmentMoneda)
   const [concepto, setConcepto] = useState(existing?.concepto ?? '')
 
   async function save() {
     if (!monto || !concepto.trim()) return
-    const payload = { investment_id: investmentId, fecha, monto: parseFloat(monto), concepto: concepto.trim() }
+    const payload = { investment_id: investmentId, fecha, monto: parseFloat(monto), moneda, concepto: concepto.trim() }
     if (existing) {
       await supabase.from('investment_costs').update(payload).eq('id', existing.id)
       logActivity(profile, 'editó un costo de', 'inversión', investmentNombre, concepto.trim())
@@ -682,6 +720,20 @@ function CostModal({
               className="w-full px-4 py-3 rounded-xl border border-line text-lg"
             />
           </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Moneda</label>
+          <select
+            value={moneda}
+            onChange={(e) => setMoneda(e.target.value as Currency)}
+            className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c === 'OTHER' ? 'Otra' : c}
+              </option>
+            ))}
+          </select>
         </div>
         <button
           onClick={save}
