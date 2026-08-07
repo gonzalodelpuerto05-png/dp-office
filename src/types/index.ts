@@ -1,4 +1,4 @@
-export type Currency = 'ARS' | 'USD' | 'EUR' | 'OTHER'
+export type Currency = 'UYU' | 'ARS' | 'USD' | 'EUR' | 'OTHER'
 
 export type IncomeStatus = 'programado' | 'cobrado'
 
@@ -85,4 +85,8 @@ export const DAYS: { key: DayOfWeek; label: string }[] = [
   { key: 'domingo', label: 'Domingo' },
 ]
 
-export const CURRENCIES: Currency[] = ['ARS', 'USD', 'EUR', 'OTHER']
+export const CURRENCIES: Currency[] = ['UYU', 'ARS', 'USD', 'EUR', 'OTHER']
+
+// Moneda base de la app: el patrimonio consolidado del dashboard y los
+// reportes se expresan siempre en esta moneda.
+export const BASE_CURRENCY: Currency = 'UYU'

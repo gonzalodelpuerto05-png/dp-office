@@ -5,7 +5,7 @@ import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { InvestmentIncome } from '../types'
-import { formatARS, toARS, gainLoss, formatDate } from '../lib/format'
+import { formatBase, toBase, gainLoss, formatDate } from '../lib/format'
 
 const PIE_COLORS = ['#c4633f', '#6f8f6a', '#c99a3c', '#b4494f', '#7c8fb0', '#9a7bb0']
 
@@ -30,7 +30,7 @@ export default function Dashboard() {
   }, [])
 
   const patrimonioTotal = useMemo(
-    () => investments.reduce((sum, inv) => sum + toARS(inv, inv.valor_actual), 0),
+    () => investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0),
     [investments]
   )
 
@@ -39,7 +39,7 @@ export default function Dashboard() {
       categories
         .map((cat) => {
           const catInv = investments.filter((i) => i.category_id === cat.id)
-          const value = catInv.reduce((sum, i) => sum + toARS(i, i.valor_actual), 0)
+          const value = catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0)
           return { name: cat.nombre, value }
         })
         .filter((c) => c.value > 0),
@@ -47,7 +47,7 @@ export default function Dashboard() {
   )
 
   const gananciaTotal = useMemo(
-    () => investments.reduce((sum, inv) => sum + toARS(inv, gainLoss(inv)), 0),
+    () => investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0),
     [investments]
   )
 
@@ -63,13 +63,13 @@ export default function Dashboard() {
 
       <div className="grid sm:grid-cols-2 gap-6">
         <div className="bg-paper border border-line rounded-2xl p-6">
-          <p className="text-ink-soft text-sm">Patrimonio total (ARS)</p>
-          <p className="text-4xl font-semibold text-ink mt-1">{formatARS(patrimonioTotal)}</p>
+          <p className="text-ink-soft text-sm">Patrimonio total (UYU)</p>
+          <p className="text-4xl font-semibold text-ink mt-1">{formatBase(patrimonioTotal)}</p>
         </div>
         <div className="bg-paper border border-line rounded-2xl p-6">
-          <p className="text-ink-soft text-sm">Ganancia / Pérdida total (ARS)</p>
+          <p className="text-ink-soft text-sm">Ganancia / Pérdida total (UYU)</p>
           <p className={`text-4xl font-semibold mt-1 ${gananciaTotal >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
-            {formatARS(gananciaTotal)}
+            {formatBase(gananciaTotal)}
           </p>
         </div>
       </div>
@@ -95,7 +95,7 @@ export default function Dashboard() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => formatARS(Number(value))} />
+                <Tooltip formatter={(value) => formatBase(Number(value))} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -144,13 +144,13 @@ export default function Dashboard() {
                 <tr className="text-sm text-ink-soft border-b border-line">
                   <th className="py-2 pr-4 font-medium">Inversión</th>
                   <th className="py-2 pr-4 font-medium">Categoría</th>
-                  <th className="py-2 pr-4 font-medium">Ganancia/Pérdida (ARS)</th>
+                  <th className="py-2 pr-4 font-medium">Ganancia/Pérdida (UYU)</th>
                 </tr>
               </thead>
               <tbody>
                 {investments.map((inv) => {
                   const catName = categories.find((c) => c.id === inv.category_id)?.nombre ?? '-'
-                  const glARS = toARS(inv, gainLoss(inv))
+                  const glBase = toBase(inv, gainLoss(inv))
                   return (
                     <tr key={inv.id} className="border-b border-line last:border-0">
                       <td className="py-3 pr-4">
@@ -159,8 +159,8 @@ export default function Dashboard() {
                         </Link>
                       </td>
                       <td className="py-3 pr-4 text-ink-soft">{catName}</td>
-                      <td className={`py-3 pr-4 font-medium ${glARS >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
-                        {formatARS(glARS)}
+                      <td className={`py-3 pr-4 font-medium ${glBase >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
+                        {formatBase(glBase)}
                       </td>
                     </tr>
                   )

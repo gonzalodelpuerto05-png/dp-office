@@ -1,22 +1,23 @@
 import type { Currency, Investment } from '../types'
+import { BASE_CURRENCY } from '../types'
 
-export function formatARS(value: number) {
-  return new Intl.NumberFormat('es-AR', {
+export function formatBase(value: number) {
+  return new Intl.NumberFormat('es-UY', {
     style: 'currency',
-    currency: 'ARS',
+    currency: BASE_CURRENCY,
     maximumFractionDigits: 0,
   }).format(value)
 }
 
 export function formatMoney(value: number, currency: Currency | string) {
   try {
-    return new Intl.NumberFormat('es-AR', {
+    return new Intl.NumberFormat('es-UY', {
       style: 'currency',
       currency: currency === 'OTHER' ? 'USD' : currency,
       maximumFractionDigits: 2,
     }).format(value)
   } catch {
-    return `${value.toLocaleString('es-AR')} ${currency}`
+    return `${value.toLocaleString('es-UY')} ${currency}`
   }
 }
 
@@ -26,12 +27,13 @@ export function formatPercent(value: number) {
 
 export function formatDate(value: string | null | undefined) {
   if (!value) return '-'
-  return new Date(value + 'T00:00:00').toLocaleDateString('es-AR')
+  return new Date(value + 'T00:00:00').toLocaleDateString('es-UY')
 }
 
-// Convierte el valor de una inversión a ARS usando la cotización cargada al momento de la compra.
-export function toARS(investment: Pick<Investment, 'moneda' | 'cotizacion'>, amount: number) {
-  if (investment.moneda === 'ARS') return amount
+// Convierte el valor de una inversión a la moneda base (UYU) usando la
+// cotización cargada al momento de la compra.
+export function toBase(investment: Pick<Investment, 'moneda' | 'cotizacion'>, amount: number) {
+  if (investment.moneda === BASE_CURRENCY) return amount
   const rate = investment.cotizacion || 1
   return amount * rate
 }

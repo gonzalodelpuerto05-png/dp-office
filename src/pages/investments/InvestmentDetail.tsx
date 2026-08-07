@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useProfiles } from '../../hooks/useProfiles'
 import Modal from '../../components/Modal'
 import type { Investment, InvestmentIncome, InvestmentCost, Currency, IncomeStatus } from '../../types'
+import { BASE_CURRENCY } from '../../types'
 import { formatMoney, formatDate, gainLoss, gainLossPercent, formatPercent } from '../../lib/format'
 
 export default function InvestmentDetail() {
@@ -126,7 +127,7 @@ export default function InvestmentDetail() {
             <Row label="Fecha" value={formatDate(investment.fecha_compra)} />
             <Row label="Valor de compra" value={formatMoney(investment.valor_compra, investment.moneda)} />
             <Row label="Moneda" value={investment.moneda} />
-            {investment.moneda !== 'ARS' && (
+            {investment.moneda !== BASE_CURRENCY && (
               <Row label="Cotización usada" value={investment.cotizacion.toLocaleString('es-AR')} />
             )}
           </dl>

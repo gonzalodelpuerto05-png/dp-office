@@ -5,7 +5,7 @@ import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import type { Currency, Investment } from '../types'
-import { CURRENCIES } from '../types'
+import { CURRENCIES, BASE_CURRENCY } from '../types'
 import { formatMoney, gainLoss, gainLossPercent, formatPercent } from '../lib/format'
 
 export default function Investments() {
@@ -138,7 +138,7 @@ export default function Investments() {
                   </tbody>
                 </table>
                 <p className="text-sm text-ink-soft mt-3">
-                  Total categoría: <span className="font-medium text-ink">{formatMoney(total, catInvestments[0]?.moneda ?? 'ARS')}</span>
+                  Total categoría: <span className="font-medium text-ink">{formatMoney(total, catInvestments[0]?.moneda ?? BASE_CURRENCY)}</span>
                 </p>
               </div>
             )}
@@ -204,7 +204,7 @@ function NewInvestmentModal({
   onCreated: () => void
 }) {
   const [nombre, setNombre] = useState('')
-  const [moneda, setMoneda] = useState<Currency>('ARS')
+  const [moneda, setMoneda] = useState<Currency>(BASE_CURRENCY)
   const [cotizacion, setCotizacion] = useState('1')
   const [valorCompra, setValorCompra] = useState('')
   const [fechaCompra, setFechaCompra] = useState(new Date().toISOString().slice(0, 10))
@@ -218,7 +218,7 @@ function NewInvestmentModal({
       category_id: categoryId,
       nombre: nombre.trim(),
       moneda,
-      cotizacion: moneda === 'ARS' ? 1 : parseFloat(cotizacion) || 1,
+      cotizacion: moneda === BASE_CURRENCY ? 1 : parseFloat(cotizacion) || 1,
       valor_compra: valor,
       fecha_compra: fechaCompra,
       valor_actual: valor,
@@ -257,9 +257,9 @@ function NewInvestmentModal({
               ))}
             </select>
           </div>
-          {moneda !== 'ARS' && (
+          {moneda !== BASE_CURRENCY && (
             <div>
-              <label className="block text-sm font-medium text-ink mb-1">Cotización a ARS</label>
+              <label className="block text-sm font-medium text-ink mb-1">Cotización a UYU</label>
               <input
                 type="number"
                 step="0.01"

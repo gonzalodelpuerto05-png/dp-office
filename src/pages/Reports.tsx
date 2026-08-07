@@ -4,8 +4,9 @@ import autoTable from 'jspdf-autotable'
 import { supabase } from '../lib/supabase'
 import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useProfiles } from '../hooks/useProfiles'
-import { formatARS, toARS, gainLoss, gainLossPercent, formatDate, formatMoney } from '../lib/format'
+import { formatBase, toBase, gainLoss, gainLossPercent, formatDate, formatMoney } from '../lib/format'
 import type { InvestmentIncome, InvestmentCost, TaskCard } from '../types'
+import { BASE_CURRENCY } from '../types'
 
 type Periodo = 'semanal' | 'mensual' | 'trimestral' | 'semestral' | 'anual' | 'personalizado'
 
@@ -63,28 +64,28 @@ export default function Reports() {
       doc.setTextColor(0)
       y += 12
 
-      const patrimonioTotal = investments.reduce((sum, inv) => sum + toARS(inv, inv.valor_actual), 0)
-      const gananciaTotal = investments.reduce((sum, inv) => sum + toARS(inv, gainLoss(inv)), 0)
+      const patrimonioTotal = investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0)
+      const gananciaTotal = investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0)
 
       doc.setFontSize(14)
       doc.text('Resumen ejecutivo', 14, y)
       y += 8
       doc.setFontSize(11)
-      doc.text(`Patrimonio total: ${formatARS(patrimonioTotal)}`, 14, y)
+      doc.text(`Patrimonio total: ${formatBase(patrimonioTotal)}`, 14, y)
       y += 6
-      doc.text(`Ganancia / Pérdida total: ${formatARS(gananciaTotal)}`, 14, y)
+      doc.text(`Ganancia / Pérdida total: ${formatBase(gananciaTotal)}`, 14, y)
       y += 10
 
       autoTable(doc, {
         startY: y,
-        head: [['Categoría', 'Valor (ARS)', '% del total']],
+        head: [['Categoría', 'Valor (UYU)', '% del total']],
         body: categories
           .map((cat) => {
             const catInv = investments.filter((i) => i.category_id === cat.id)
-            const value = catInv.reduce((sum, i) => sum + toARS(i, i.valor_actual), 0)
-            return [cat.nombre, formatARS(value), patrimonioTotal ? `${((value / patrimonioTotal) * 100).toFixed(1)}%` : '0%']
+            const value = catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0)
+            return [cat.nombre, formatBase(value), patrimonioTotal ? `${((value / patrimonioTotal) * 100).toFixed(1)}%` : '0%']
           })
-          .filter((row) => row[1] !== formatARS(0)),
+          .filter((row) => row[1] !== formatBase(0)),
         theme: 'striped',
         headStyles: { fillColor: [196, 99, 63] },
         margin: { left: 14, right: 14 },
@@ -128,7 +129,7 @@ export default function Reports() {
         head: [['Fecha', 'Inversión', 'Concepto', 'Monto', 'Estado']],
         body: income.map((i) => {
           const inv = investments.find((v) => v.id === i.investment_id)
-          return [formatDate(i.fecha), inv?.nombre ?? '-', i.concepto, formatMoney(i.monto, inv?.moneda ?? 'ARS'), i.estado]
+          return [formatDate(i.fecha), inv?.nombre ?? '-', i.concepto, formatMoney(i.monto, inv?.moneda ?? BASE_CURRENCY), i.estado]
         }),
         theme: 'striped',
         headStyles: { fillColor: [111, 143, 106] },
@@ -147,7 +148,7 @@ export default function Reports() {
         head: [['Fecha', 'Inversión', 'Concepto', 'Monto']],
         body: costs.map((c) => {
           const inv = investments.find((v) => v.id === c.investment_id)
-          return [formatDate(c.fecha), inv?.nombre ?? '-', c.concepto, formatMoney(c.monto, inv?.moneda ?? 'ARS')]
+          return [formatDate(c.fecha), inv?.nombre ?? '-', c.concepto, formatMoney(c.monto, inv?.moneda ?? BASE_CURRENCY)]
         }),
         theme: 'striped',
         headStyles: { fillColor: [180, 73, 79] },
