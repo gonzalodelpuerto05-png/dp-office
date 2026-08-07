@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useProfiles } from '../../hooks/useProfiles'
 import Modal from '../../components/Modal'
 import type { Investment, InvestmentIncome, InvestmentCost, Currency, IncomeStatus } from '../../types'
-import { BASE_CURRENCY } from '../../types'
+import { BASE_CURRENCY, CURRENCIES } from '../../types'
 import { formatMoney, formatDate, gainLoss, gainLossPercent, formatPercent } from '../../lib/format'
 
 export default function InvestmentDetail() {
@@ -23,6 +23,7 @@ export default function InvestmentDetail() {
   const [notas, setNotas] = useState('')
   const [notasSaved, setNotasSaved] = useState(true)
 
+  const [showEditModal, setShowEditModal] = useState(false)
   const [showIncomeModal, setShowIncomeModal] = useState(false)
   const [showCostModal, setShowCostModal] = useState(false)
   const [editingIncome, setEditingIncome] = useState<InvestmentIncome | null>(null)
@@ -122,13 +123,22 @@ export default function InvestmentDetail() {
 
       <div className="grid md:grid-cols-2 gap-6">
         <section className="bg-paper border border-line rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-ink mb-4">Compra</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-ink">Compra</h2>
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="text-sm font-medium text-terracotta hover:text-terracotta-dark"
+            >
+              Editar
+            </button>
+          </div>
           <dl className="space-y-2 text-base">
+            <Row label="Nombre" value={investment.nombre} />
             <Row label="Fecha" value={formatDate(investment.fecha_compra)} />
             <Row label="Valor de compra" value={formatMoney(investment.valor_compra, investment.moneda)} />
             <Row label="Moneda" value={investment.moneda} />
             {investment.moneda !== BASE_CURRENCY && (
-              <Row label="Cotización usada" value={investment.cotizacion.toLocaleString('es-AR')} />
+              <Row label="Cotización usada" value={investment.cotizacion.toLocaleString('es-UY')} />
             )}
           </dl>
         </section>
@@ -271,6 +281,13 @@ export default function InvestmentDetail() {
         </section>
       </div>
 
+      {showEditModal && (
+        <EditInvestmentModal
+          investment={investment}
+          onClose={() => setShowEditModal(false)}
+          onSaved={load}
+        />
+      )}
       {showIncomeModal && (
         <IncomeModal
           investmentId={id!}
@@ -298,6 +315,113 @@ export default function InvestmentDetail() {
         />
       )}
     </div>
+  )
+}
+
+function EditInvestmentModal({
+  investment,
+  onClose,
+  onSaved,
+}: {
+  investment: Investment
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [nombre, setNombre] = useState(investment.nombre)
+  const [moneda, setMoneda] = useState<Currency>(investment.moneda)
+  const [cotizacion, setCotizacion] = useState(String(investment.cotizacion))
+  const [valorCompra, setValorCompra] = useState(String(investment.valor_compra))
+  const [fechaCompra, setFechaCompra] = useState(investment.fecha_compra)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!nombre.trim() || !valorCompra) return
+    setSaving(true)
+    await supabase
+      .from('investments')
+      .update({
+        nombre: nombre.trim(),
+        moneda,
+        cotizacion: moneda === BASE_CURRENCY ? 1 : parseFloat(cotizacion) || 1,
+        valor_compra: parseFloat(valorCompra),
+        fecha_compra: fechaCompra,
+      })
+      .eq('id', investment.id)
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <Modal title="Editar inversión" onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Nombre</label>
+          <input
+            autoFocus
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Moneda</label>
+            <select
+              value={moneda}
+              onChange={(e) => setMoneda(e.target.value as Currency)}
+              className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c === 'OTHER' ? 'Otra' : c}
+                </option>
+              ))}
+            </select>
+          </div>
+          {moneda !== BASE_CURRENCY && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Cotización a {BASE_CURRENCY}</label>
+              <input
+                type="number"
+                step="0.01"
+                value={cotizacion}
+                onChange={(e) => setCotizacion(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+              />
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Valor de compra</label>
+            <input
+              type="number"
+              step="0.01"
+              value={valorCompra}
+              onChange={(e) => setValorCompra(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Fecha de compra</label>
+            <input
+              type="date"
+              value={fechaCompra}
+              onChange={(e) => setFechaCompra(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-line text-lg"
+            />
+          </div>
+        </div>
+        <button
+          disabled={saving}
+          onClick={save}
+          className="w-full py-3 rounded-xl bg-terracotta text-white font-medium hover:bg-terracotta-dark disabled:opacity-60"
+        >
+          {saving ? 'Guardando...' : 'Guardar cambios'}
+        </button>
+      </div>
+    </Modal>
   )
 }
 
