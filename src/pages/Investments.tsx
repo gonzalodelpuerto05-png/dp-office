@@ -259,7 +259,7 @@ function NewInvestmentModal({
           </div>
           {moneda !== BASE_CURRENCY && (
             <div>
-              <label className="block text-sm font-medium text-ink mb-1">Cotización a UYU</label>
+              <label className="block text-sm font-medium text-ink mb-1">Cotización a {BASE_CURRENCY}</label>
               <input
                 type="number"
                 step="0.01"

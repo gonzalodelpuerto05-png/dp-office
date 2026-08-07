@@ -85,8 +85,15 @@ export const DAYS: { key: DayOfWeek; label: string }[] = [
   { key: 'domingo', label: 'Domingo' },
 ]
 
-export const CURRENCIES: Currency[] = ['UYU', 'ARS', 'USD', 'EUR', 'OTHER']
+export const CURRENCIES: Currency[] = ['USD', 'UYU', 'ARS', 'EUR', 'OTHER']
 
-// Moneda base de la app: el patrimonio consolidado del dashboard y los
-// reportes se expresan siempre en esta moneda.
-export const BASE_CURRENCY: Currency = 'UYU'
+// Monedas que se pueden elegir para VER los totales consolidados
+// (dashboard y reportes). "OTHER" queda afuera porque no es una moneda
+// concreta contra la que se pueda cotizar.
+export const VIEW_CURRENCIES: Currency[] = ['USD', 'UYU', 'ARS', 'EUR']
+
+// Moneda en la que cada inversión guarda su "cotización" (el tipo de
+// cambio cargado al momento de comprar). Todo el resto de monedas de
+// visualización se calculan a partir de esta con un tipo de cambio
+// que el usuario ingresa al elegirlas.
+export const BASE_CURRENCY: Currency = 'USD'

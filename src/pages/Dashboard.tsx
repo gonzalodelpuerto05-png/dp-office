@@ -5,13 +5,16 @@ import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { InvestmentIncome } from '../types'
-import { formatBase, toBase, gainLoss, formatDate } from '../lib/format'
+import { toBase, gainLoss, formatDate, formatMoney } from '../lib/format'
+import { useDisplayCurrency } from '../hooks/useDisplayCurrency'
+import CurrencySelector from '../components/CurrencySelector'
 
 const PIE_COLORS = ['#c4633f', '#6f8f6a', '#c99a3c', '#b4494f', '#7c8fb0', '#9a7bb0']
 
 export default function Dashboard() {
   const { categories, investments, loading } = useCategoriesWithInvestments()
   const [upcomingIncome, setUpcomingIncome] = useState<(InvestmentIncome & { investment_nombre: string })[]>([])
+  const { currency, setCurrency, rate, setRate, convert } = useDisplayCurrency()
 
   useEffect(() => {
     async function loadUpcoming() {
@@ -30,8 +33,8 @@ export default function Dashboard() {
   }, [])
 
   const patrimonioTotal = useMemo(
-    () => investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0),
-    [investments]
+    () => convert(investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0)),
+    [investments, convert]
   )
 
   const porCategoria = useMemo(
@@ -39,16 +42,16 @@ export default function Dashboard() {
       categories
         .map((cat) => {
           const catInv = investments.filter((i) => i.category_id === cat.id)
-          const value = catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0)
+          const value = convert(catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0))
           return { name: cat.nombre, value }
         })
         .filter((c) => c.value > 0),
-    [categories, investments]
+    [categories, investments, convert]
   )
 
   const gananciaTotal = useMemo(
-    () => investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0),
-    [investments]
+    () => convert(investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0)),
+    [investments, convert]
   )
 
   const today = new Date()
@@ -59,17 +62,20 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-semibold text-ink">Inicio</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-3xl font-semibold text-ink">Inicio</h1>
+        <CurrencySelector currency={currency} onCurrencyChange={setCurrency} rate={rate} onRateChange={setRate} />
+      </div>
 
       <div className="grid sm:grid-cols-2 gap-6">
         <div className="bg-paper border border-line rounded-2xl p-6">
-          <p className="text-ink-soft text-sm">Patrimonio total (UYU)</p>
-          <p className="text-4xl font-semibold text-ink mt-1">{formatBase(patrimonioTotal)}</p>
+          <p className="text-ink-soft text-sm">Patrimonio total ({currency})</p>
+          <p className="text-4xl font-semibold text-ink mt-1">{formatMoney(patrimonioTotal, currency)}</p>
         </div>
         <div className="bg-paper border border-line rounded-2xl p-6">
-          <p className="text-ink-soft text-sm">Ganancia / Pérdida total (UYU)</p>
+          <p className="text-ink-soft text-sm">Ganancia / Pérdida total ({currency})</p>
           <p className={`text-4xl font-semibold mt-1 ${gananciaTotal >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
-            {formatBase(gananciaTotal)}
+            {formatMoney(gananciaTotal, currency)}
           </p>
         </div>
       </div>
@@ -95,7 +101,7 @@ export default function Dashboard() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => formatBase(Number(value))} />
+                <Tooltip formatter={(value) => formatMoney(Number(value), currency)} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -144,13 +150,13 @@ export default function Dashboard() {
                 <tr className="text-sm text-ink-soft border-b border-line">
                   <th className="py-2 pr-4 font-medium">Inversión</th>
                   <th className="py-2 pr-4 font-medium">Categoría</th>
-                  <th className="py-2 pr-4 font-medium">Ganancia/Pérdida (UYU)</th>
+                  <th className="py-2 pr-4 font-medium">Ganancia/Pérdida ({currency})</th>
                 </tr>
               </thead>
               <tbody>
                 {investments.map((inv) => {
                   const catName = categories.find((c) => c.id === inv.category_id)?.nombre ?? '-'
-                  const glBase = toBase(inv, gainLoss(inv))
+                  const glConverted = convert(toBase(inv, gainLoss(inv)))
                   return (
                     <tr key={inv.id} className="border-b border-line last:border-0">
                       <td className="py-3 pr-4">
@@ -159,8 +165,8 @@ export default function Dashboard() {
                         </Link>
                       </td>
                       <td className="py-3 pr-4 text-ink-soft">{catName}</td>
-                      <td className={`py-3 pr-4 font-medium ${glBase >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
-                        {formatBase(glBase)}
+                      <td className={`py-3 pr-4 font-medium ${glConverted >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
+                        {formatMoney(glConverted, currency)}
                       </td>
                     </tr>
                   )

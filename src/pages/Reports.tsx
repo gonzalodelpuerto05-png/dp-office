@@ -4,9 +4,11 @@ import autoTable from 'jspdf-autotable'
 import { supabase } from '../lib/supabase'
 import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useProfiles } from '../hooks/useProfiles'
-import { formatBase, toBase, gainLoss, gainLossPercent, formatDate, formatMoney } from '../lib/format'
+import { toBase, gainLoss, gainLossPercent, formatDate, formatMoney } from '../lib/format'
 import type { InvestmentIncome, InvestmentCost, TaskCard } from '../types'
 import { BASE_CURRENCY } from '../types'
+import { useDisplayCurrency } from '../hooks/useDisplayCurrency'
+import CurrencySelector from '../components/CurrencySelector'
 
 type Periodo = 'semanal' | 'mensual' | 'trimestral' | 'semestral' | 'anual' | 'personalizado'
 
@@ -30,6 +32,7 @@ export default function Reports() {
   const [desde, setDesde] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().slice(0, 10))
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [generating, setGenerating] = useState(false)
+  const { currency, setCurrency, rate, setRate, convert } = useDisplayCurrency()
 
   async function generar() {
     setGenerating(true)
@@ -61,31 +64,36 @@ export default function Reports() {
       doc.setFontSize(11)
       doc.setTextColor(100)
       doc.text(`Período: ${formatDate(d)} — ${formatDate(h)}`, 14, y)
+      y += 6
+      if (currency !== BASE_CURRENCY) {
+        doc.text(`Montos consolidados en ${currency} (1 ${BASE_CURRENCY} = ${rate} ${currency})`, 14, y)
+        y += 6
+      }
       doc.setTextColor(0)
-      y += 12
+      y += 6
 
-      const patrimonioTotal = investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0)
-      const gananciaTotal = investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0)
+      const patrimonioTotal = convert(investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0))
+      const gananciaTotal = convert(investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0))
 
       doc.setFontSize(14)
       doc.text('Resumen ejecutivo', 14, y)
       y += 8
       doc.setFontSize(11)
-      doc.text(`Patrimonio total: ${formatBase(patrimonioTotal)}`, 14, y)
+      doc.text(`Patrimonio total: ${formatMoney(patrimonioTotal, currency)}`, 14, y)
       y += 6
-      doc.text(`Ganancia / Pérdida total: ${formatBase(gananciaTotal)}`, 14, y)
+      doc.text(`Ganancia / Pérdida total: ${formatMoney(gananciaTotal, currency)}`, 14, y)
       y += 10
 
       autoTable(doc, {
         startY: y,
-        head: [['Categoría', 'Valor (UYU)', '% del total']],
+        head: [['Categoría', `Valor (${currency})`, '% del total']],
         body: categories
           .map((cat) => {
             const catInv = investments.filter((i) => i.category_id === cat.id)
-            const value = catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0)
-            return [cat.nombre, formatBase(value), patrimonioTotal ? `${((value / patrimonioTotal) * 100).toFixed(1)}%` : '0%']
+            const value = convert(catInv.reduce((sum, i) => sum + toBase(i, i.valor_actual), 0))
+            return [cat.nombre, formatMoney(value, currency), patrimonioTotal ? `${((value / patrimonioTotal) * 100).toFixed(1)}%` : '0%']
           })
-          .filter((row) => row[1] !== formatBase(0)),
+          .filter((row) => row[1] !== formatMoney(0, currency)),
         theme: 'striped',
         headStyles: { fillColor: [196, 99, 63] },
         margin: { left: 14, right: 14 },
@@ -195,6 +203,10 @@ export default function Reports() {
       <h1 className="text-3xl font-semibold text-ink">Reportes</h1>
 
       <section className="bg-paper border border-line rounded-2xl p-6 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Moneda del informe</label>
+          <CurrencySelector currency={currency} onCurrencyChange={setCurrency} rate={rate} onRateChange={setRate} />
+        </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Período</label>
           <select
