@@ -39,6 +39,7 @@ export interface InvestmentIncome {
   moneda: Currency
   concepto: string
   estado: IncomeStatus
+  recurrente: boolean
   created_at: string
 }
 
@@ -65,6 +66,14 @@ export interface ActivityLogEntry {
   entidad: string
   entidad_nombre: string
   detalle: string | null
+  created_at: string
+}
+
+export interface InvestmentValuePoint {
+  id: string
+  investment_id: string
+  valor: number
+  fecha: string
   created_at: string
 }
 

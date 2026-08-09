@@ -250,7 +250,12 @@ function NewInvestmentModal({
       fecha_compra: fechaCompra,
       valor_actual: valor,
     }
-    await supabase.from('investments').insert(payload)
+    const { data: created } = await supabase.from('investments').insert(payload).select('id').single()
+    if (created) {
+      await supabase
+        .from('investment_value_history')
+        .insert({ investment_id: created.id, valor, fecha: fechaCompra })
+    }
     logActivity(profile, 'creó', 'inversión', nombre.trim())
     setSaving(false)
     onCreated()

@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { supabase } from '../../lib/supabase'
 import { useProfiles } from '../../hooks/useProfiles'
 import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/Modal'
-import type { Investment, InvestmentIncome, InvestmentCost, Currency, IncomeStatus } from '../../types'
+import type { Investment, InvestmentIncome, InvestmentCost, InvestmentValuePoint, Currency, IncomeStatus } from '../../types'
 import { BASE_CURRENCY, CURRENCIES } from '../../types'
 import { formatMoney, formatDate, gainLoss, gainLossPercent, formatPercent } from '../../lib/format'
 import { logActivity } from '../../lib/activity'
@@ -20,6 +21,7 @@ export default function InvestmentDetail() {
   const [income, setIncome] = useState<InvestmentIncome[]>([])
   const [costs, setCosts] = useState<InvestmentCost[]>([])
   const [responsibleIds, setResponsibleIds] = useState<string[]>([])
+  const [valueHistory, setValueHistory] = useState<InvestmentValuePoint[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editingValue, setEditingValue] = useState(false)
@@ -38,16 +40,18 @@ export default function InvestmentDetail() {
   // guardado colapsaría la página a "Cargando..." y se perdía el scroll.
   const load = useCallback(async () => {
     if (!id) return
-    const [{ data: inv }, { data: inc }, { data: cst }, { data: resp }] = await Promise.all([
+    const [{ data: inv }, { data: inc }, { data: cst }, { data: resp }, { data: hist }] = await Promise.all([
       supabase.from('investments').select('*').eq('id', id).single(),
       supabase.from('investment_income').select('*').eq('investment_id', id).order('fecha'),
       supabase.from('investment_costs').select('*').eq('investment_id', id).order('fecha'),
       supabase.from('investment_responsibles').select('user_id').eq('investment_id', id),
+      supabase.from('investment_value_history').select('*').eq('investment_id', id).order('fecha'),
     ])
     setInvestment(inv as Investment)
     setIncome((inc as InvestmentIncome[]) ?? [])
     setCosts((cst as InvestmentCost[]) ?? [])
     setResponsibleIds((resp as { user_id: string }[])?.map((r) => r.user_id) ?? [])
+    setValueHistory((hist as InvestmentValuePoint[]) ?? [])
     if (inv) {
       setValorActual(String((inv as Investment).valor_actual))
       setNotas((inv as Investment).notas ?? '')
@@ -63,6 +67,9 @@ export default function InvestmentDetail() {
     if (!id || !investment) return
     const nuevo = parseFloat(valorActual) || 0
     await supabase.from('investments').update({ valor_actual: nuevo }).eq('id', id)
+    await supabase
+      .from('investment_value_history')
+      .insert({ investment_id: id, valor: nuevo, fecha: new Date().toISOString().slice(0, 10) })
     logActivity(
       profile,
       'actualizó el valor actual de',
@@ -212,6 +219,30 @@ export default function InvestmentDetail() {
       </div>
 
       <section className="bg-paper border border-line rounded-2xl p-6">
+        <h2 className="text-lg font-semibold text-ink mb-4">Evolución del valor</h2>
+        {valueHistory.length < 2 ? (
+          <p className="text-ink-soft text-sm">
+            Todavía no hay suficiente historial para graficar. Se va a ir completando cada vez que actualices el
+            valor actual.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={valueHistory.map((p) => ({ ...p, fechaLabel: formatDate(p.fecha) }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
+              <XAxis dataKey="fechaLabel" tick={{ fontSize: 12 }} />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                width={70}
+                tickFormatter={(v) => formatMoney(Number(v), investment.moneda)}
+              />
+              <Tooltip formatter={(value) => formatMoney(Number(value), investment.moneda)} />
+              <Line type="monotone" dataKey="valor" stroke="var(--color-terracotta)" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+
+      <section className="bg-paper border border-line rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-ink">Ingresos</h2>
           <button
@@ -232,6 +263,7 @@ export default function InvestmentDetail() {
               moneda: i.moneda,
               concepto: i.concepto,
               estado: i.estado,
+              recurrente: i.recurrente,
             }))}
             onEdit={(row) => setEditingIncome(income.find((i) => i.id === row.id) ?? null)}
             onDelete={deleteIncome}
@@ -482,7 +514,15 @@ function IncomeCostTable({
   onEdit,
   onDelete,
 }: {
-  rows: { id: string; fecha: string; monto: number; moneda: Currency; concepto: string; estado?: IncomeStatus }[]
+  rows: {
+    id: string
+    fecha: string
+    monto: number
+    moneda: Currency
+    concepto: string
+    estado?: IncomeStatus
+    recurrente?: boolean
+  }[]
   onEdit: (row: { id: string }) => void
   onDelete: (id: string) => void
 }) {
@@ -502,7 +542,14 @@ function IncomeCostTable({
           {rows.map((row) => (
             <tr key={row.id} className="border-b border-line last:border-0">
               <td className="py-3 pr-4">{formatDate(row.fecha)}</td>
-              <td className="py-3 pr-4">{row.concepto}</td>
+              <td className="py-3 pr-4">
+                {row.concepto}
+                {row.recurrente && (
+                  <span title="Se repite todos los meses" className="ml-1.5 text-ink-soft">
+                    ↻
+                  </span>
+                )}
+              </td>
               <td className="py-3 pr-4">{formatMoney(row.monto, row.moneda)}</td>
               {row.estado !== undefined && (
                 <td className="py-3 pr-4">
@@ -558,6 +605,7 @@ function IncomeModal({
   const [moneda, setMoneda] = useState<Currency>(existing?.moneda ?? investmentMoneda)
   const [concepto, setConcepto] = useState(existing?.concepto ?? '')
   const [estado, setEstado] = useState<IncomeStatus>(existing?.estado ?? 'programado')
+  const [recurrente, setRecurrente] = useState(existing?.recurrente ?? false)
 
   async function save() {
     if (!monto || !concepto.trim()) return
@@ -568,6 +616,7 @@ function IncomeModal({
       moneda,
       concepto: concepto.trim(),
       estado,
+      recurrente,
     }
     if (existing) {
       await supabase.from('investment_income').update(payload).eq('id', existing.id)
@@ -641,6 +690,15 @@ function IncomeModal({
             </select>
           </div>
         </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={recurrente}
+            onChange={(e) => setRecurrente(e.target.checked)}
+            className="w-4 h-4"
+          />
+          Se repite todos los meses (se va a generar solo el mes siguiente)
+        </label>
         <button
           onClick={save}
           className="w-full py-3 rounded-xl bg-terracotta text-white font-medium hover:bg-terracotta-dark"

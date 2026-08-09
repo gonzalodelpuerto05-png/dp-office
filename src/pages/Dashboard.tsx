@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import { generateDueRecurringIncome } from '../lib/recurringIncome'
 import type { AppEvent, InvestmentIncome } from '../types'
 import { MONTHS } from '../types'
 import { toBase, gainLoss, formatDate, formatMoney, addToBag, formatBag, type MoneyBag } from '../lib/format'
@@ -13,6 +15,9 @@ import CurrencySelector from '../components/CurrencySelector'
 const PIE_COLORS = ['#c4633f', '#6f8f6a', '#c99a3c', '#b4494f', '#7c8fb0', '#9a7bb0', '#d9a441', '#5c9e8f']
 
 export default function Dashboard() {
+  const { profile } = useAuth()
+  const profileRef = useRef(profile)
+  profileRef.current = profile
   const { categories, investments, loading } = useCategoriesWithInvestments()
   const [upcomingIncome, setUpcomingIncome] = useState<(InvestmentIncome & { investment_nombre: string })[]>([])
   const [upcomingEvents, setUpcomingEvents] = useState<AppEvent[]>([])
@@ -55,8 +60,10 @@ export default function Dashboard() {
         .limit(5)
       setUpcomingEvents((data as AppEvent[]) ?? [])
     }
-    loadUpcoming()
-    loadEvents()
+    generateDueRecurringIncome(profileRef.current).finally(() => {
+      loadUpcoming()
+      loadEvents()
+    })
   }, [])
 
   useEffect(() => {
