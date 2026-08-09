@@ -1,21 +1,28 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { InvestmentIncome } from '../types'
-import { toBase, gainLoss, formatDate, formatMoney } from '../lib/format'
+import type { AppEvent, InvestmentIncome } from '../types'
+import { MONTHS } from '../types'
+import { toBase, gainLoss, formatDate, formatMoney, addToBag, formatBag, type MoneyBag } from '../lib/format'
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency'
 import CurrencySelector from '../components/CurrencySelector'
 
-const PIE_COLORS = ['#c4633f', '#6f8f6a', '#c99a3c', '#b4494f', '#7c8fb0', '#9a7bb0']
+const PIE_COLORS = ['#c4633f', '#6f8f6a', '#c99a3c', '#b4494f', '#7c8fb0', '#9a7bb0', '#d9a441', '#5c9e8f']
 
 export default function Dashboard() {
   const { categories, investments, loading } = useCategoriesWithInvestments()
   const [upcomingIncome, setUpcomingIncome] = useState<(InvestmentIncome & { investment_nombre: string })[]>([])
+  const [upcomingEvents, setUpcomingEvents] = useState<AppEvent[]>([])
   const { currency, setCurrency, rate, setRate, convert } = useDisplayCurrency()
   const [chartExpanded, setChartExpanded] = useState(false)
+
+  const now = new Date()
+  const [mesIngresos, setMesIngresos] = useState(now.getMonth() + 1)
+  const [anioIngresos, setAnioIngresos] = useState(now.getFullYear())
+  const [ingresosBag, setIngresosBag] = useState<MoneyBag>({})
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -38,8 +45,38 @@ export default function Dashboard() {
       const rows = (data ?? []).map((r: any) => ({ ...r, investment_nombre: r.investments?.nombre ?? '' }))
       setUpcomingIncome(rows)
     }
+    async function loadEvents() {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await supabase
+        .from('events')
+        .select('*')
+        .gte('fecha', today)
+        .order('fecha')
+        .limit(5)
+      setUpcomingEvents((data as AppEvent[]) ?? [])
+    }
     loadUpcoming()
+    loadEvents()
   }, [])
+
+  useEffect(() => {
+    async function loadIngresosMes() {
+      const desde = `${anioIngresos}-${String(mesIngresos).padStart(2, '0')}-01`
+      const ultimoDia = new Date(anioIngresos, mesIngresos, 0).getDate()
+      const hasta = `${anioIngresos}-${String(mesIngresos).padStart(2, '0')}-${ultimoDia}`
+      const { data } = await supabase
+        .from('investment_income')
+        .select('monto, moneda')
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+      const bag = ((data as { monto: number; moneda: string }[]) ?? []).reduce(
+        (acc, row) => addToBag(acc, row.moneda, row.monto),
+        {} as MoneyBag
+      )
+      setIngresosBag(bag)
+    }
+    loadIngresosMes()
+  }, [mesIngresos, anioIngresos])
 
   const patrimonioTotal = useMemo(
     () => convert(investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0)),
@@ -58,7 +95,7 @@ export default function Dashboard() {
     [categories, investments, convert]
   )
 
-  const gananciaTotal = useMemo(
+  const gananciaRevalorizacion = useMemo(
     () => convert(investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0)),
     [investments, convert]
   )
@@ -66,6 +103,8 @@ export default function Dashboard() {
   const today = new Date()
   const in30 = new Date()
   in30.setDate(today.getDate() + 30)
+
+  const yearOptions = Array.from({ length: 6 }, (_, i) => now.getFullYear() - 2 + i)
 
   if (loading) return <p className="text-ink-soft">Cargando...</p>
 
@@ -82,11 +121,46 @@ export default function Dashboard() {
           <p className="text-4xl font-semibold text-ink mt-1">{formatMoney(patrimonioTotal, currency)}</p>
         </div>
         <div className="bg-paper border border-line rounded-2xl p-6">
-          <p className="text-ink-soft text-sm">Ganancia / Pérdida total ({currency})</p>
-          <p className={`text-4xl font-semibold mt-1 ${gananciaTotal >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
-            {formatMoney(gananciaTotal, currency)}
+          <p className="text-ink-soft text-sm">Ganancia por revalorización ({currency})</p>
+          <p className={`text-4xl font-semibold mt-1 ${gananciaRevalorizacion >= 0 ? 'text-sage-dark' : 'text-rose'}`}>
+            {formatMoney(gananciaRevalorizacion, currency)}
           </p>
+          <p className="text-xs text-ink-soft mt-1">Valor actual vs. valor de compra, de todas las inversiones.</p>
         </div>
+      </div>
+
+      <div className="bg-paper border border-line rounded-2xl p-6">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
+          <p className="text-ink-soft text-sm">Ganancia por ingresos</p>
+          <div className="flex gap-2">
+            <select
+              value={mesIngresos}
+              onChange={(e) => setMesIngresos(Number(e.target.value))}
+              className="px-3 py-1.5 rounded-lg border border-line text-sm"
+            >
+              {MONTHS.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <select
+              value={anioIngresos}
+              onChange={(e) => setAnioIngresos(Number(e.target.value))}
+              className="px-3 py-1.5 rounded-lg border border-line text-sm"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="text-3xl font-semibold text-sage-dark">{formatBag(ingresosBag, currency)}</p>
+        <p className="text-xs text-ink-soft mt-1">
+          Suma de ingresos cargados en {MONTHS[mesIngresos - 1]} {anioIngresos}, agrupados por moneda.
+        </p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -106,25 +180,7 @@ export default function Dashboard() {
           {porCategoria.length === 0 ? (
             <p className="text-ink-soft text-sm">Cargá inversiones para ver el desglose.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={porCategoria}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label={(entry) => `${entry.name} (${((entry.value / patrimonioTotal) * 100).toFixed(0)}%)`}
-                >
-                  {porCategoria.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatMoney(Number(value), currency)} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieWithLegend data={porCategoria} total={patrimonioTotal} currency={currency} height={240} />
           )}
         </section>
 
@@ -156,6 +212,29 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+
+      <section className="bg-paper border border-line rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-ink">Próximos eventos</h2>
+          <Link to="/eventos" className="text-sm font-medium text-terracotta hover:text-terracotta-dark">
+            Ver todos
+          </Link>
+        </div>
+        {upcomingEvents.length === 0 ? (
+          <p className="text-ink-soft text-sm">
+            No hay eventos próximos. <Link to="/eventos" className="text-terracotta">Agregar uno</Link>.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {upcomingEvents.map((ev) => (
+              <li key={ev.id} className="py-3 flex items-center justify-between">
+                <p className="font-medium text-ink">{ev.titulo}</p>
+                <p className="text-sm text-ink-soft">{formatDate(ev.fecha)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="bg-paper border border-line rounded-2xl p-6">
         <h2 className="text-lg font-semibold text-ink mb-4">Ganancia/Pérdida por inversión</h2>
@@ -208,29 +287,63 @@ export default function Dashboard() {
               Cerrar ✕
             </button>
           </div>
-          <div className="flex-1 p-4 sm:p-8">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={porCategoria}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius="70%"
-                  label={(entry) => `${entry.name} (${((entry.value / patrimonioTotal) * 100).toFixed(0)}%)`}
-                >
-                  {porCategoria.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatMoney(Number(value), currency)} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="flex-1 p-4 sm:p-8 overflow-y-auto">
+            <PieWithLegend data={porCategoria} total={patrimonioTotal} currency={currency} height={480} large />
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Gráfico de torta sin etiquetas encima de las porciones (se superponían
+// y se volvían ilegibles con muchas categorías). En su lugar, una lista
+// con el color, nombre y porcentaje de cada una al lado del gráfico.
+function PieWithLegend({
+  data,
+  total,
+  currency,
+  height,
+  large,
+}: {
+  data: { name: string; value: number }[]
+  total: number
+  currency: string
+  height: number
+  large?: boolean
+}) {
+  return (
+    <div className="flex flex-col lg:flex-row items-center gap-6">
+      <ResponsiveContainer width="100%" height={height} className="lg:flex-1">
+        <PieChart>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            outerRadius={large ? '85%' : 100}
+            labelLine={false}
+          >
+            {data.map((_, i) => (
+              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(value) => formatMoney(Number(value), currency)} />
+        </PieChart>
+      </ResponsiveContainer>
+      <ul className="w-full lg:w-64 shrink-0 space-y-2">
+        {data.map((c, i) => (
+          <li key={c.name} className="flex items-center gap-2 text-sm">
+            <span
+              className="w-3 h-3 rounded-full shrink-0"
+              style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
+            />
+            <span className="flex-1 min-w-0 truncate text-ink">{c.name}</span>
+            <span className="text-ink-soft shrink-0">{total ? ((c.value / total) * 100).toFixed(0) : 0}%</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

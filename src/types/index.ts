@@ -75,6 +75,30 @@ export interface InvestmentFile {
   created_at: string
 }
 
+export interface AppEvent {
+  id: string
+  titulo: string
+  fecha: string
+  descripcion: string | null
+  creado_por: string | null
+  created_at: string
+}
+
+export const MONTHS = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+]
+
 export type DayOfWeek =
   | 'lunes'
   | 'martes'

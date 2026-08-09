@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Modal from './Modal'
 import { DAYS } from '../types'
+import { formatDate } from '../lib/format'
 
 interface Result {
   id: string
-  tipo: 'inversión' | 'categoría' | 'tarea'
+  tipo: 'inversión' | 'categoría' | 'tarea' | 'evento'
   titulo: string
   subtitulo: string
   to: string
@@ -20,10 +21,11 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     async function load() {
-      const [{ data: cats }, { data: invs }, { data: tasks }] = await Promise.all([
+      const [{ data: cats }, { data: invs }, { data: tasks }, { data: events }] = await Promise.all([
         supabase.from('categories').select('id, nombre'),
         supabase.from('investments').select('id, nombre, category_id, categories(nombre)'),
         supabase.from('tasks').select('id, titulo, dia_semana'),
+        supabase.from('events').select('id, titulo, fecha'),
       ])
 
       const results: Result[] = [
@@ -48,6 +50,13 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
           subtitulo: DAYS.find((d) => d.key === t.dia_semana)?.label ?? 'Tarea',
           to: '/tablero',
         })),
+        ...((events ?? []) as { id: string; titulo: string; fecha: string }[]).map((e) => ({
+          id: e.id,
+          tipo: 'evento' as const,
+          titulo: e.titulo,
+          subtitulo: formatDate(e.fecha),
+          to: '/eventos',
+        })),
       ]
       setAll(results)
       setLoading(false)
@@ -69,7 +78,7 @@ export default function GlobalSearch({ onClose }: { onClose: () => void }) {
         autoFocus
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Inversión, categoría o tarea..."
+        placeholder="Inversión, categoría, tarea o evento..."
         className="w-full px-4 py-3 rounded-xl border border-line text-lg mb-4"
       />
 

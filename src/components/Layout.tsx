@@ -10,6 +10,8 @@ import {
   IconLogout,
   IconClock,
   IconSearch,
+  IconCalendar,
+  IconTrendingUp,
 } from './icons'
 import GlobalSearch from './GlobalSearch'
 
@@ -17,6 +19,8 @@ const NAV = [
   { to: '/', label: 'Inicio', end: true, Icon: IconHome },
   { to: '/inversiones', label: 'Inversiones', Icon: IconBriefcase },
   { to: '/tablero', label: 'Tablero', Icon: IconBoard },
+  { to: '/flujo', label: 'Flujo mensual', Icon: IconTrendingUp },
+  { to: '/eventos', label: 'Eventos', Icon: IconCalendar },
   { to: '/reportes', label: 'Reportes', Icon: IconDocument },
   { to: '/actividad', label: 'Actividad', Icon: IconClock },
   { to: '/configuracion', label: 'Configuración', Icon: IconGear },

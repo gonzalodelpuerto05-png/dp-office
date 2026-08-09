@@ -12,6 +12,7 @@ const ENTITY_PHRASE: Record<string, string> = {
   inversión: 'la inversión',
   tarea: 'la tarea',
   usuario: 'al usuario',
+  evento: 'el evento',
 }
 
 function timeAgo(iso: string) {
