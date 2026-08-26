@@ -54,6 +54,30 @@ export function formatBag(bag: MoneyBag, emptyCurrency: Currency = BASE_CURRENCY
   return entries.map(([cur, amt]) => formatMoney(amt, cur)).join('  +  ')
 }
 
+// Resta dos bolsas moneda por moneda (ej. ingresos - costos = resultado
+// neto), sin inventar una conversión entre monedas distintas.
+export function subtractBags(a: MoneyBag, b: MoneyBag): MoneyBag {
+  const result: MoneyBag = { ...a }
+  for (const [cur, amt] of Object.entries(b)) {
+    result[cur] = (result[cur] ?? 0) - amt
+  }
+  return result
+}
+
+export function bagHasNegative(bag: MoneyBag) {
+  return Object.values(bag).some((v) => v < 0)
+}
+
+// Convierte una bolsa en filas [etiqueta, monto] listas para una planilla:
+// si hay una sola moneda, una fila con el monto numérico; si hay varias,
+// una fila por moneda para que cada celda siga siendo un número editable.
+export function bagToRows(label: string, bag: MoneyBag): [string, number][] {
+  const entries = Object.entries(bag).filter(([, v]) => v !== 0)
+  if (entries.length === 0) return [[label, 0]]
+  if (entries.length === 1) return [[`${label} (${entries[0][0]})`, Number(entries[0][1].toFixed(2))]]
+  return entries.map(([cur, amt]) => [`${label} (${cur})`, Number(amt.toFixed(2))])
+}
+
 export function gainLoss(investment: Pick<Investment, 'valor_actual' | 'valor_compra'>) {
   return investment.valor_actual - investment.valor_compra
 }

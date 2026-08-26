@@ -5,7 +5,18 @@ import ExcelJS from 'exceljs'
 import { supabase } from '../lib/supabase'
 import { useCategoriesWithInvestments } from '../hooks/useCategories'
 import { useProfiles } from '../hooks/useProfiles'
-import { toBase, gainLoss, gainLossPercent, formatDate, formatMoney } from '../lib/format'
+import {
+  toBase,
+  gainLoss,
+  gainLossPercent,
+  formatDate,
+  formatMoney,
+  addToBag,
+  subtractBags,
+  formatBag,
+  bagToRows,
+  type MoneyBag,
+} from '../lib/format'
 import type { InvestmentIncome, InvestmentCost, TaskCard } from '../types'
 import { BASE_CURRENCY } from '../types'
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency'
@@ -44,6 +55,13 @@ async function fetchPeriodData(d: string, h: string) {
   }
 }
 
+function periodBags(income: InvestmentIncome[], costs: InvestmentCost[]) {
+  const ingresosBag = income.reduce((acc, i) => addToBag(acc, i.moneda, i.monto), {} as MoneyBag)
+  const costosBag = costs.reduce((acc, c) => addToBag(acc, c.moneda, c.monto), {} as MoneyBag)
+  const netoBag = subtractBags(ingresosBag, costosBag)
+  return { ingresosBag, costosBag, netoBag }
+}
+
 export default function Reports() {
   const { categories, investments } = useCategoriesWithInvestments()
   const { profiles } = useProfiles()
@@ -59,6 +77,7 @@ export default function Reports() {
     try {
       const { desde: d, hasta: h } = rangoPorPeriodo(periodo, desde, hasta)
       const { income, costs, tasks } = await fetchPeriodData(d, h)
+      const { ingresosBag, costosBag, netoBag } = periodBags(income, costs)
 
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
@@ -88,6 +107,12 @@ export default function Reports() {
       doc.text(`Patrimonio total: ${formatMoney(patrimonioTotal, currency)}`, 14, y)
       y += 6
       doc.text(`Ganancia / Pérdida total: ${formatMoney(gananciaTotal, currency)}`, 14, y)
+      y += 6
+      doc.text(`Ingresos del período: ${formatBag(ingresosBag, currency)}`, 14, y)
+      y += 6
+      doc.text(`Costos del período: ${formatBag(costosBag, currency)}`, 14, y)
+      y += 6
+      doc.text(`Resultado neto del período: ${formatBag(netoBag, currency)}`, 14, y)
       y += 10
 
       autoTable(doc, {
@@ -209,6 +234,7 @@ export default function Reports() {
     try {
       const { desde: d, hasta: h } = rangoPorPeriodo(periodo, desde, hasta)
       const { income, costs, tasks } = await fetchPeriodData(d, h)
+      const { ingresosBag, costosBag, netoBag } = periodBags(income, costs)
 
       const patrimonioTotal = convert(investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0))
       const gananciaTotal = convert(investments.reduce((sum, inv) => sum + toBase(inv, gainLoss(inv)), 0))
@@ -226,6 +252,9 @@ export default function Reports() {
       if (currency !== BASE_CURRENCY) resumen.addRow([`1 ${BASE_CURRENCY} =`, rate])
       resumen.addRow([`Patrimonio total (${currency})`, patrimonioTotal])
       resumen.addRow([`Ganancia / Pérdida total (${currency})`, gananciaTotal])
+      bagToRows('Ingresos del período', ingresosBag).forEach((row) => resumen.addRow(row))
+      bagToRows('Costos del período', costosBag).forEach((row) => resumen.addRow(row))
+      bagToRows('Resultado neto del período', netoBag).forEach((row) => resumen.addRow(row))
 
       const porCategoria = wb.addWorksheet('Por categoría')
       porCategoria.columns = [

@@ -8,7 +8,17 @@ import { useAuth } from '../context/AuthContext'
 import { generateDueRecurringIncome } from '../lib/recurringIncome'
 import type { AppEvent, InvestmentIncome } from '../types'
 import { MONTHS } from '../types'
-import { toBase, gainLoss, formatDate, formatMoney, addToBag, formatBag, type MoneyBag } from '../lib/format'
+import {
+  toBase,
+  gainLoss,
+  formatDate,
+  formatMoney,
+  addToBag,
+  formatBag,
+  subtractBags,
+  bagHasNegative,
+  type MoneyBag,
+} from '../lib/format'
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency'
 import CurrencySelector from '../components/CurrencySelector'
 
@@ -25,9 +35,10 @@ export default function Dashboard() {
   const [chartExpanded, setChartExpanded] = useState(false)
 
   const now = new Date()
-  const [mesIngresos, setMesIngresos] = useState(now.getMonth() + 1)
-  const [anioIngresos, setAnioIngresos] = useState(now.getFullYear())
+  const [mes, setMes] = useState(now.getMonth() + 1)
+  const [anio, setAnio] = useState(now.getFullYear())
   const [ingresosBag, setIngresosBag] = useState<MoneyBag>({})
+  const [costosBag, setCostosBag] = useState<MoneyBag>({})
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -67,23 +78,23 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    async function loadIngresosMes() {
-      const desde = `${anioIngresos}-${String(mesIngresos).padStart(2, '0')}-01`
-      const ultimoDia = new Date(anioIngresos, mesIngresos, 0).getDate()
-      const hasta = `${anioIngresos}-${String(mesIngresos).padStart(2, '0')}-${ultimoDia}`
-      const { data } = await supabase
-        .from('investment_income')
-        .select('monto, moneda')
-        .gte('fecha', desde)
-        .lte('fecha', hasta)
-      const bag = ((data as { monto: number; moneda: string }[]) ?? []).reduce(
-        (acc, row) => addToBag(acc, row.moneda, row.monto),
-        {} as MoneyBag
-      )
-      setIngresosBag(bag)
+    async function loadMes() {
+      const desde = `${anio}-${String(mes).padStart(2, '0')}-01`
+      const ultimoDia = new Date(anio, mes, 0).getDate()
+      const hasta = `${anio}-${String(mes).padStart(2, '0')}-${ultimoDia}`
+      const [{ data: inc }, { data: cst }] = await Promise.all([
+        supabase.from('investment_income').select('monto, moneda').gte('fecha', desde).lte('fecha', hasta),
+        supabase.from('investment_costs').select('monto, moneda').gte('fecha', desde).lte('fecha', hasta),
+      ])
+      const toBag = (rows: { monto: number; moneda: string }[] | null) =>
+        (rows ?? []).reduce((acc, row) => addToBag(acc, row.moneda, row.monto), {} as MoneyBag)
+      setIngresosBag(toBag(inc))
+      setCostosBag(toBag(cst))
     }
-    loadIngresosMes()
-  }, [mesIngresos, anioIngresos])
+    loadMes()
+  }, [mes, anio])
+
+  const netoBag = useMemo(() => subtractBags(ingresosBag, costosBag), [ingresosBag, costosBag])
 
   const patrimonioTotal = useMemo(
     () => convert(investments.reduce((sum, inv) => sum + toBase(inv, inv.valor_actual), 0)),
@@ -137,12 +148,12 @@ export default function Dashboard() {
       </div>
 
       <div className="bg-paper border border-line rounded-2xl p-6">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
-          <p className="text-ink-soft text-sm">Ganancia por ingresos</p>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <p className="text-ink-soft text-sm">Resultado del mes</p>
           <div className="flex gap-2">
             <select
-              value={mesIngresos}
-              onChange={(e) => setMesIngresos(Number(e.target.value))}
+              value={mes}
+              onChange={(e) => setMes(Number(e.target.value))}
               className="px-3 py-1.5 rounded-lg border border-line text-sm"
             >
               {MONTHS.map((m, i) => (
@@ -152,8 +163,8 @@ export default function Dashboard() {
               ))}
             </select>
             <select
-              value={anioIngresos}
-              onChange={(e) => setAnioIngresos(Number(e.target.value))}
+              value={anio}
+              onChange={(e) => setAnio(Number(e.target.value))}
               className="px-3 py-1.5 rounded-lg border border-line text-sm"
             >
               {yearOptions.map((y) => (
@@ -164,9 +175,28 @@ export default function Dashboard() {
             </select>
           </div>
         </div>
-        <p className="text-3xl font-semibold text-sage-dark">{formatBag(ingresosBag, currency)}</p>
-        <p className="text-xs text-ink-soft mt-1">
-          Suma de ingresos cargados en {MONTHS[mesIngresos - 1]} {anioIngresos}, agrupados por moneda.
+        <div className="grid sm:grid-cols-3 gap-6">
+          <div>
+            <p className="text-sm text-ink-soft">Ingresos</p>
+            <p className="text-2xl font-semibold text-sage-dark break-words">{formatBag(ingresosBag, currency)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-ink-soft">Costos</p>
+            <p className="text-2xl font-semibold text-rose break-words">{formatBag(costosBag, currency)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-ink-soft">Resultado neto</p>
+            <p
+              className={`text-2xl font-semibold break-words ${
+                bagHasNegative(netoBag) ? 'text-rose' : 'text-sage-dark'
+              }`}
+            >
+              {formatBag(netoBag, currency)}
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-ink-soft mt-4">
+          Ingresos y costos cargados en {MONTHS[mes - 1]} {anio}, agrupados por moneda.
         </p>
       </div>
 
