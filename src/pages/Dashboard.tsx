@@ -147,8 +147,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-paper border border-line rounded-2xl p-6">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <p className="text-ink-soft text-sm">Resultado del mes</p>
           <div className="flex gap-2">
             <select
@@ -176,18 +176,20 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="grid sm:grid-cols-3 gap-6">
-          <div>
+          <div className="bg-paper border border-line rounded-2xl p-6">
             <p className="text-sm text-ink-soft">Ingresos</p>
-            <p className="text-2xl font-semibold text-sage-dark break-words">{formatBag(ingresosBag, currency)}</p>
+            <p className="text-2xl font-semibold text-sage-dark break-words mt-1">
+              {formatBag(ingresosBag, currency)}
+            </p>
           </div>
-          <div>
+          <div className="bg-paper border border-line rounded-2xl p-6">
             <p className="text-sm text-ink-soft">Costos</p>
-            <p className="text-2xl font-semibold text-rose break-words">{formatBag(costosBag, currency)}</p>
+            <p className="text-2xl font-semibold text-rose break-words mt-1">{formatBag(costosBag, currency)}</p>
           </div>
-          <div>
+          <div className="bg-paper border border-line rounded-2xl p-6">
             <p className="text-sm text-ink-soft">Resultado neto</p>
             <p
-              className={`text-2xl font-semibold break-words ${
+              className={`text-2xl font-semibold break-words mt-1 ${
                 bagHasNegative(netoBag) ? 'text-rose' : 'text-sage-dark'
               }`}
             >
@@ -195,7 +197,7 @@ export default function Dashboard() {
             </p>
           </div>
         </div>
-        <p className="text-xs text-ink-soft mt-4">
+        <p className="text-xs text-ink-soft">
           Ingresos y costos cargados en {MONTHS[mes - 1]} {anio}, agrupados por moneda.
         </p>
       </div>
